@@ -176,7 +176,7 @@
     const focusKey = a && a.dataset && (a.dataset.a || a.dataset.bind) ? `[data-${a.dataset.a ? "a" : "bind"}="${a.dataset.a || a.dataset.bind}"][data-id="${a.dataset.id || ""}"]` : null;
     const acct = document.getElementById("account");
     if (acct) acct.innerHTML = Sync.chipHTML();
-    if (P.setupComplete && P.step >= STEPS.length) app.innerHTML = Sync.panelHTML() + App.render(P) + renderFooter();
+    if (P.setupComplete && P.step >= STEPS.length) app.innerHTML = Sync.panelHTML() + Install.cardHTML() + App.render(P) + renderFooter();
     else app.innerHTML = Sync.panelHTML() + renderShell(STEPS[P.step].id);
     window.scrollTo(0, keepScroll ? scrollY : 0);
     if (P.setupComplete && P.step >= STEPS.length) App.afterRender(app);
@@ -746,7 +746,7 @@
       <div class="reset">
         ${confirmingReset
           ? `<p>This deletes everything you've entered on this device.</p><button type="button" class="btn danger" data-act="reset-yes">Yes, start over</button> <button type="button" class="btn ghost" data-act="reset-no">Cancel</button>`
-          : `<button type="button" class="link-btn muted" data-act="reset">Start over</button>`}
+          : `${Install.linkHTML()}${Install.linkHTML() ? " · " : ""}<button type="button" class="link-btn muted" data-act="reset">Start over</button>`}
       </div>`;
   }
 
@@ -968,7 +968,8 @@
   App.init({ save: () => persist(), rerender: () => render(), profile: () => P });
 
   // Account sign-in and sync (only when a Supabase project is configured).
-  document.addEventListener("click", (e) => { Sync.handle(e); });
+  document.addEventListener("click", (e) => { Sync.handle(e); Install.handle(e); });
+  Install.onChange = () => render();
   document.addEventListener("submit", (e) => { Sync.handle(e); });
   Sync.init({
     getProfile: () => P,

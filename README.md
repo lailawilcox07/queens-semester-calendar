@@ -20,8 +20,9 @@ Try it with sample data: open the site and click "Or try a demo with sample cour
 
 **Milestone 4: accounts and sync (built, needs backend setup).** Optional sign-in with a Queen's email (a code is emailed, no password). The semester syncs between devices through Supabase. Uploads need an account and are limited per student (20 a day, 40 a term by default). See [supabase/SETUP.md](supabase/SETUP.md).
 
+**Milestone 5: add to your phone (done).** After setup, a card offers "Add it to your home screen" with steps for the student's own phone: iPhone (Safari, including the iOS 26 menu), Android (Chrome's install prompt when available), or a QR code on laptops. It can be reopened from "Add to your phone" at the bottom. A service worker lets the app open offline.
+
 Coming next:
-- Guide for adding the app to a phone's home screen
 - Push reminders
 
 ## Updating term dates
