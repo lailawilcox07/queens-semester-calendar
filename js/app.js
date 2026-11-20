@@ -27,7 +27,8 @@
 
   function progress(P) {
     P.progress = P.progress || {};
-    ["done", "started", "grades", "studyDone", "target"].forEach((k) => { P.progress[k] = P.progress[k] || {}; });
+    ["done", "started", "grades", "studyDone", "target", "locked"].forEach((k) => { P.progress[k] = P.progress[k] || {}; });
+    P.progress.sessions = P.progress.sessions || [];
     return P.progress;
   }
 
@@ -74,10 +75,10 @@
 
   function itemClass(i) {
     if (i.kind === "class") return `class c${i.course.color}`;
-    if (i.kind === "study") return `study c${i.course.color}`;
-    return i.kind; // fixed, event
+    if (i.kind === "study") return `study c${i.course.color} st-${i.status}`;
+    return i.kind; // fixed, event, meal
   }
-  const itemSub = (i) => (i.kind === "study" ? "Study" : i.sub);
+  const itemSub = (i) => (i.kind === "study" ? (i.status === "missed" ? "Study · missed" : "Study") : i.sub);
 
   function calendarView(P, today) {
     const weeks = eng.weeks();
@@ -115,7 +116,7 @@
         <h4>${esc(DAYS_FULL[d.dow])}, ${esc(E().shortDate(d.iso))}${d.iso === today ? ` <span class="today-tag">Today</span>` : ""}${d.isBreak && d.inTerm ? ` <span class="break-tag">${esc(d.breakLabel)}</span>` : ""}</h4>
         ${d.due.map(dueChip).join("")}
         ${d.items.length ? d.items.map((i) => `
-          <div class="ag-item ${itemClass(i)} ${i.kind === "study" && pr.studyDone[i.id] ? "done" : ""}">
+          <div class="ag-item ${itemClass(i)}">
             <span class="ag-time mono">${fmtTime(i.start)}<br>${fmtTime(i.end)}</span>
             <span class="ag-body"><b>${esc(i.title)}</b> ${esc(itemSub(i))}${i.location ? `<span class="muted"> · ${esc(i.location)}</span>` : ""}${i.kind === "study" ? `<span class="ag-why">${esc(i.sub)}</span>` : ""}</span>
           </div>`).join("") : (d.due.length ? "" : `<p class="empty small">Nothing scheduled</p>`)}
@@ -146,13 +147,13 @@
       <div class="cg-times" style="height:${height}px">${hours.map((m) => `<span style="top:${(m - lo) * px}px">${fmtTime(String(m / 60).padStart(2, "0") + ":00")}</span>`).join("")}</div>
       ${days.map((d) => `<div class="cg-col ${d.iso === today ? "today" : ""} ${d.isBreak && d.inTerm ? "break" : ""}" style="height:${height}px">
         ${hours.map((m) => `<div class="cg-line" style="top:${(m - lo) * px}px"></div>`).join("")}
-        ${lanes(d.items).map((i) => `<div class="cg-block ${itemClass(i)} ${i.kind === "study" && pr.studyDone[i.id] ? "done" : ""} ${(E().toMin(i.end) - E().toMin(i.start)) < 55 ? "short" : ""}" style="top:${(E().toMin(i.start) - lo) * px}px;height:${Math.max(20, (E().toMin(i.end) - E().toMin(i.start)) * px - 2)}px;left:calc(${(i.lane / i.lanes) * 100}% + 2px);width:calc(${100 / i.lanes}% - 4px)" title="${esc(i.title)} ${esc(itemSub(i))} ${fmtTime(i.start)}–${fmtTime(i.end)}${i.kind === "study" ? " · " + esc(i.sub) : ""}">
+        ${lanes(d.items).map((i) => `<div class="cg-block ${itemClass(i)} ${(E().toMin(i.end) - E().toMin(i.start)) < 55 ? "short" : ""}" style="top:${(E().toMin(i.start) - lo) * px}px;height:${Math.max(20, (E().toMin(i.end) - E().toMin(i.start)) * px - 2)}px;left:calc(${(i.lane / i.lanes) * 100}% + 2px);width:calc(${100 / i.lanes}% - 4px)" title="${esc(i.title)} ${esc(itemSub(i))} ${fmtTime(i.start)}–${fmtTime(i.end)}${i.kind === "study" ? " · " + esc(i.sub) : ""}">
           <b>${esc(i.title)}</b><span>${esc(itemSub(i))}</span><span class="cg-time">${fmtTime(i.start)}–${fmtTime(i.end)}</span>
         </div>`).join("")}
       </div>`).join("")}
     </div>`;
 
-    const legend = `<div class="legend"><span><i class="sw class"></i>Class</span><span><i class="sw study"></i>Study</span><span><i class="sw fixed"></i>Commitment</span><span><i class="sw event"></i>One-time event</span><span><i class="sw due"></i>Deadline</span></div>`;
+    const legend = `<div class="legend"><span><i class="sw class"></i>Class</span><span><i class="sw study"></i>Study</span><span><i class="sw fixed"></i>Commitment</span><span><i class="sw event"></i>One-time event</span><span><i class="sw meal"></i>Meal</span><span><i class="sw missed"></i>Missed study</span><span><i class="sw due"></i>Deadline</span></div>`;
 
     return `${bar}
       <div class="week-head"><h3>${esc(week.label === "—" ? "Week" : week.label)} · ${esc(week.range)}</h3>
@@ -208,11 +209,18 @@
     }
     const d = eng.day(today);
     const study = d.items.filter((i) => i.kind === "study");
-    const studyRows = study.map((i) => `
-      <label class="todo-row c${i.course.color}">
-        <input type="checkbox" data-a="study-done" data-id="${esc(i.id)}" ${pr.studyDone[i.id] ? "checked" : ""}>
+    const tm = pr.timer;
+    const studyRows = study.map((i) => {
+      const running = tm && tm.blockId === i.id;
+      return `<div class="todo-row c${i.course.color} ${i.status === "done" ? "is-done" : ""}">
+        <input type="checkbox" data-a="study-done" data-id="${esc(i.id)}" aria-label="Mark ${esc(i.course.code)} study done" ${i.status === "done" ? "checked" : ""}>
         <span class="todo-main"><span><b>${esc(i.course.code)}</b> ${esc(i.sub)}</span><span class="todo-meta mono">${fmtTime(i.start)}–${fmtTime(i.end)}</span></span>
-      </label>`).join("");
+        ${i.status === "done" ? "" : running ? `<span class="pill-run">In progress</span>` : tm ? "" : `<button type="button" class="btn small start-btn" data-a="t-start" data-c="${i.course.id}" data-id="${esc(i.id)}" data-label="${esc(i.sub)}">Start</button>`}
+      </div>`;
+    }).join("");
+    const freeStart = tm ? "" : `<div class="free-start"><label class="inline">Study something else:
+      <select id="freeCourse">${P.courses.map((c) => `<option value="${c.id}">${esc(c.code)}</option>`).join("")}</select></label>
+      <button type="button" class="btn small" data-a="t-start-free">Start timer</button></div>`;
 
     const soon = eng.deadlines().filter((x) => x.due && !pr.done[x.id] && E().daysBetween(today, x.due) <= 3);
     const dueRows = soon.map((x) => `
@@ -221,24 +229,30 @@
         <span class="todo-main"><span><b>${esc(x.course.code)}</b> ${esc(x.a.name || x.a.type)}</span><span class="todo-meta">${x.due < today ? "Overdue · " : ""}${esc(relDays(x.due, today))}${x.a.weight !== "" && x.a.weight != null ? ` · ${esc(x.a.weight)}%` : ""}</span></span>
       </label>`).join("");
 
-    // This week's study progress.
+    // This week's study progress: planned blocks vs time actually studied.
     const monday = E().mondayOf(today);
     let plannedMin = 0, doneMin = 0;
-    for (let i = 0; i < 7; i++) eng.studyOn(E().addDays(monday, i)).forEach((b) => {
-      const m = E().toMin(b.end) - E().toMin(b.start);
-      plannedMin += m;
-      if (pr.studyDone[b.id]) doneMin += m;
-    });
-    const pct = plannedMin ? Math.round((doneMin / plannedMin) * 100) : 0;
+    for (let k = 0; k < 7; k++) {
+      const iso = E().addDays(monday, k);
+      eng.studyOn(iso).forEach((b) => { plannedMin += E().toMin(b.end) - E().toMin(b.start); });
+      if (iso < today) P.courses.forEach((c) => { doneMin += eng.actualMinutes(c.id, iso); });
+    }
+    // Today: timed sessions, plus blocks ticked off without the timer.
+    const timedToday = pr.sessions.filter((x) => x.date === today);
+    doneMin += timedToday.reduce((s2, x) => s2 + x.minutes, 0);
+    study.forEach((b) => { if (pr.studyDone[b.id] && !timedToday.some((x) => x.blockId === b.id)) doneMin += E().toMin(b.end) - E().toMin(b.start); });
+    const pct = plannedMin ? Math.min(100, Math.round((doneMin / plannedMin) * 100)) : 0;
 
     const tomorrow = eng.day(E().addDays(today, 1));
-    const firstTomorrow = tomorrow.items[0];
+    const firstTomorrow = tomorrow.items.find((i) => i.kind !== "meal");
 
     return `
       <h3 class="todo-date">${esc(DAYS_FULL[d.dow])}, ${esc(E().shortDate(today))}${d.isBreak ? ` <span class="break-tag">${esc(d.breakLabel)}</span>` : ""}</h3>
       <div class="card">
         <h3>Study today</h3>
+        <p class="muted small">Press Start when you begin, so the app learns how long each course really takes.</p>
         ${studyRows || `<p class="empty">No study blocks planned today.</p>`}
+        ${freeStart}
       </div>
       <div class="card">
         <h3>Due soon</h3>
@@ -248,7 +262,59 @@
         <div class="sum-head"><h3>This week</h3><span class="mono small">${round1(doneMin / 60)} of ${round1(plannedMin / 60)} h</span></div>
         <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
         ${firstTomorrow ? `<p class="muted small">Tomorrow starts with <b>${esc(firstTomorrow.title)}</b> ${esc(itemSub(firstTomorrow))} at ${fmtTime(firstTomorrow.start)}.</p>` : ""}
-      </div>`;
+      </div>
+      ${insightsCard(P)}`;
+  }
+
+  // ---------- study timer ----------
+  // P.progress.timer = { courseId, blockId, label, start (ms, null when paused), elapsed (ms before this run) }
+  const timerMs = (tm) => tm.elapsed + (tm.start ? Date.now() - tm.start : 0);
+  function clock(ms) {
+    const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(sec).padStart(2, "0");
+  }
+  function timerBar(P) {
+    const tm = progress(P).timer;
+    if (!tm) return "";
+    const c = P.courses.find((x) => x.id === tm.courseId);
+    if (!c) return "";
+    return `<div class="timer-bar c${c.color} ${tm.start ? "running" : "paused"}" role="timer" aria-live="off">
+      <span class="timer-info"><b>${esc(c.code)}</b> ${esc(tm.label || "Study")}<span class="timer-state">${tm.start ? "Studying" : "Paused"}</span></span>
+      <span class="timer-clock mono">${clock(timerMs(tm))}</span>
+      <span class="timer-btns">
+        ${tm.start ? `<button type="button" class="btn small" data-a="t-pause">Pause</button>` : `<button type="button" class="btn small" data-a="t-resume">Resume</button>`}
+        <button type="button" class="btn small primary" data-a="t-finish">Finish</button>
+        <button type="button" class="icon-btn" data-a="t-cancel" aria-label="Discard this session">×</button>
+      </span>
+    </div>`;
+  }
+  // Keep the clock ticking without re-drawing the page.
+  setInterval(() => {
+    const el = document.querySelector(".timer-clock");
+    if (!el || !ctx) return;
+    const tm = (ctx.profile().progress || {}).timer;
+    if (tm && tm.start) el.textContent = clock(timerMs(tm));
+  }, 1000);
+
+  function insightsCard(P) {
+    const rep = eng.timeReport().filter((r) => r.planned || r.actual);
+    if (!rep.length) return "";
+    const max = Math.max(...rep.map((r) => Math.max(r.planned, r.actual)), 60);
+    const notes = [];
+    rep.forEach((r) => {
+      if (r.effort > 1) notes.push(`<b>${esc(r.course.code)}</b> is taking more time than planned, so it's getting extra study time.`);
+      if (r.missed >= 30) notes.push(`<b>${esc(r.course.code)}</b>: ${round1(r.missed / 60)} h of missed study is being moved into your coming days.`);
+    });
+    return `<div class="card insights">
+      <h3>Your study time, last 2 weeks</h3>
+      <p class="muted small">Planned vs. actually studied, from your timer and ticked-off blocks.</p>
+      ${rep.map((r) => `<div class="ins-row c${r.course.color}">
+        <span class="ins-name"><b>${esc(r.course.code)}</b></span>
+        <span class="ins-bars"><span class="ins-plan" style="width:${(r.planned / max) * 100}%"></span><span class="ins-act" style="width:${(r.actual / max) * 100}%"></span></span>
+        <span class="ins-num mono">${round1(r.actual / 60)} / ${round1(r.planned / 60)} h</span>
+      </div>`).join("")}
+      ${notes.length ? `<ul class="ins-notes">${notes.map((n) => `<li>${n}</li>`).join("")}</ul>` : ""}
+    </div>`;
   }
 
   // ---------- Grades ----------
@@ -301,7 +367,23 @@
 
   // ---------- shell ----------
   function render(P) {
+    const pr = progress(P);
+    if (!pr.since) { pr.since = E().localToday(); ctx.save(); }
     eng = E().create(P);
+    // Lock in the plan for any days that have passed, so they never change.
+    const newlyPast = eng.unlockedPast();
+    if (Object.keys(newlyPast).length) {
+      Object.assign(pr.locked, newlyPast);
+      ctx.save();
+      eng = E().create(P);
+    }
+    // Remember today's plan as shown, so it's what gets locked once today has passed.
+    const todayIso = E().localToday();
+    const shown = eng.studyOn(todayIso).map((b) => ({ id: b.id, courseId: b.courseId, start: b.start, end: b.end, sub: b.sub }));
+    if (eng.inTerm(todayIso) && JSON.stringify(pr.lastSeen) !== JSON.stringify({ date: todayIso, blocks: shown })) {
+      pr.lastSeen = { date: todayIso, blocks: shown };
+      ctx.save();
+    }
     const today = E().localToday();
     const tabs = [["cal", "Calendar"], ["todo", "To-Do"], ["due", "Due"], ["grades", "Grades"]];
     const view = { cal: calendarView, todo: todoView, due: dueView, grades: gradesView }[ui.tab] || calendarView;
@@ -310,6 +392,7 @@
         <p class="eyebrow">${esc(P.term.label || "Your term")} · ${P.courses.map((c) => esc(c.code)).join(" · ")}</p>
         <button type="button" class="link-btn" data-act="edit" data-step="7">Edit setup</button>
       </header>
+      ${timerBar(P)}
       ${nowStrip(P, today)}
       <nav class="tabbar" role="tablist">${tabs.map(([id, l]) => `<button type="button" role="tab" aria-selected="${ui.tab === id}" class="${ui.tab === id ? "active" : ""}" data-a="tab" data-id="${id}">${l}</button>`).join("")}</nav>
       <section class="view view-${ui.tab}">${view(P, today)}</section>`;
@@ -334,6 +417,28 @@
         }
         case "study-done": if (el.checked) pr.studyDone[d.id] = true; else delete pr.studyDone[d.id]; ctx.save(); break;
         case "due-done": pr.done[d.id] = true; delete pr.started[d.id]; ctx.save(); break;
+        case "t-start":
+          pr.timer = { courseId: d.c, blockId: d.id, label: d.label, start: Date.now(), elapsed: 0 };
+          ctx.save(); break;
+        case "t-start-free": {
+          const sel = document.getElementById("freeCourse");
+          pr.timer = { courseId: sel.value, blockId: null, label: "Extra study", start: Date.now(), elapsed: 0 };
+          ctx.save(); break;
+        }
+        case "t-pause": if (pr.timer && pr.timer.start) { pr.timer.elapsed += Date.now() - pr.timer.start; pr.timer.start = null; } ctx.save(); break;
+        case "t-resume": if (pr.timer && !pr.timer.start) pr.timer.start = Date.now(); ctx.save(); break;
+        case "t-cancel": delete pr.timer; ctx.save(); break;
+        case "t-finish": {
+          const tm = pr.timer;
+          if (tm) {
+            const minutes = Math.min(360, Math.round(timerMs(tm) / 60000));
+            if (minutes >= 1) pr.sessions.push({ id: Math.random().toString(36).slice(2, 9), courseId: tm.courseId, blockId: tm.blockId, date: E().localToday(), minutes });
+            if (tm.blockId) pr.studyDone[tm.blockId] = true;
+            delete pr.timer;
+            ctx.save();
+          }
+          break;
+        }
         default: return false;
       }
       ctx.rerender();
@@ -355,7 +460,7 @@
     if (on) bar.scrollLeft = on.offsetLeft - bar.clientWidth / 2 + on.offsetWidth / 2 - bar.offsetLeft;
   }
 
-  function init(c) { ctx = c; }
+  function init(c) { ctx = c; }  // { save, rerender, profile }
 
   root.App = { render, handle, init, afterRender };
 })(window);

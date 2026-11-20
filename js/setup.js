@@ -155,7 +155,19 @@
   }
 
   // ---------- rendering ----------
+  // If a field loses focus because the student is pressing a button, re-drawing
+  // right then would swap the button out from under the click. Wait until the
+  // press is over; the button's own handler re-draws anyway.
+  let pressing = false, renderWaiting = false;
+  document.addEventListener("pointerdown", () => { pressing = true; }, true);
+  document.addEventListener("pointerup", () => {
+    pressing = false;
+    if (renderWaiting) setTimeout(() => { if (renderWaiting) render(); }, 0);
+  }, true);
+
   function render() {
+    if (pressing) { renderWaiting = true; return; }
+    renderWaiting = false;
     const scrollY = window.scrollY;
     const keepScroll = render._sameStep === P.step;
     render._sameStep = P.step;
@@ -578,6 +590,17 @@
         </div>
       </div>
       <div class="card">
+        <h3>Meal times</h3>
+        <p class="muted small">Study time is planned around these. If a class is in the way, the meal moves to the nearest free time.</p>
+        <div class="grid3">
+          <label>Breakfast <span class="muted small">(optional)</span>${timePicker('data-bind="meal" data-f="breakfast"', (r.meals || {}).breakfast, "Breakfast")}</label>
+          <label>Lunch${timePicker('data-bind="meal" data-f="lunch"', (r.meals || {}).lunch, "Lunch")}</label>
+          <label>Dinner${timePicker('data-bind="meal" data-f="dinner"', (r.meals || {}).dinner, "Dinner")}</label>
+        </div>
+        <label class="inline meal-len">Each meal takes
+          <select data-bind="meal" data-f="length">${[20, 30, 45, 60].map((m) => `<option value="${m}" ${Number((r.meals || {}).length || 30) === m ? "selected" : ""}>${m} min</option>`).join("")}</select></label>
+      </div>
+      <div class="card">
         <h3>Every week</h3>
         <p class="muted small">Work, sports, clubs, appointments: anything that repeats each week.</p>
         ${weekly || `<p class="empty">Nothing added.</p>`}
@@ -693,7 +716,7 @@
           <ul class="mini-courses">${P.courses.map((c) => `<li class="c${c.color}"><span class="dot"></span>${esc(c.code)}</li>`).join("")}</ul>
           <p class="muted small">${classHoursPerWeek()} h of class a week</p></div>
         <div class="card sum"><div class="sum-head"><h3>Routine</h3>${edit(5)}</div>
-          <p class="muted small">Up by ${fmtTime(P.routine.wake)}, bed by ${fmtTime(P.routine.bed)}<br>${esc(P.routine.commute)} min commute<br>${P.routine.commitments.length} weekly commitment${P.routine.commitments.length === 1 ? "" : "s"}${P.routine.oneoffs.length ? `<br>${P.routine.oneoffs.length} one-time event${P.routine.oneoffs.length === 1 ? "" : "s"}` : ""}</p></div>
+          <p class="muted small">Up by ${fmtTime(P.routine.wake)}, bed by ${fmtTime(P.routine.bed)}<br>${P.routine.meals && P.routine.meals.lunch ? `Lunch ${fmtTime(P.routine.meals.lunch)}${P.routine.meals.dinner ? `, dinner ${fmtTime(P.routine.meals.dinner)}` : ""}<br>` : ""}${esc(P.routine.commute)} min commute<br>${P.routine.commitments.length} weekly commitment${P.routine.commitments.length === 1 ? "" : "s"}${P.routine.oneoffs.length ? `<br>${P.routine.oneoffs.length} one-time event${P.routine.oneoffs.length === 1 ? "" : "s"}` : ""}</p></div>
         <div class="card sum"><div class="sum-head"><h3>Study plan</h3>${edit(6)}</div>
           <p class="muted small">${P.study.style === "focus" ? "One course a day" : "A bit of everything"}<br>${esc(P.study.weeklyHours)} h/week goal<br>${nDue} deadline${nDue === 1 ? "" : "s"} tracked</p></div>
       </div>`;
@@ -872,6 +895,7 @@
         break;
       }
       case "routine": P.routine[d.f] = v; break;
+      case "meal": P.routine.meals = P.routine.meals || {}; P.routine.meals[d.f] = d.f === "length" ? Number(v) : v; break;
       case "study": P.study[d.f] = v; break;
     }
     persist();
@@ -931,7 +955,7 @@
     if (e.target.id === "newCode") { const err = document.getElementById("codeError"); if (err) err.hidden = true; }
   });
 
-  App.init({ save: () => persist(), rerender: () => render() });
+  App.init({ save: () => persist(), rerender: () => render(), profile: () => P });
   if (P.setupComplete) P.step = STEPS.length;
   render();
 })();

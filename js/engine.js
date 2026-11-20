@@ -42,12 +42,20 @@
   }
 
   const STUDY = { minBlock: 45, maxBlock: 120, gap: 15, lookahead: 21, walk: 10 };
-  const MEALS = [[12 * 60, 12 * 60 + 30], [17 * 60 + 30, 18 * 60 + 15]];
+  const MEAL_SEARCH = [0, 15, -15, 30, -30, 45, -45, 60, -60, 75, -75, 90, -90];
 
-  function create(P) {
+  function create(P, opts) {
+    opts = opts || {};
+    const today = opts.today || localToday();
     const t = P.term;
     const progress = P.progress || {};
     const done = progress.done || {};
+    const studyDone = progress.studyDone || {};
+    const sessions = progress.sessions || [];
+    const locked = progress.locked || {};
+    // The day the student started using the app. Days before it were never
+    // planned with them, so they're not "missed" and don't count toward insights.
+    const since = progress.since || today;
     const termStart = t.classesStart;
     const termEnd = t.examEnd || t.classesEnd;
     const courseById = {};
@@ -87,11 +95,10 @@
       return items.sort((a, b) => toMin(a.start) - toMin(b.start));
     }
 
-    // Free time on a date, after classes (plus the trip to and from campus),
-    // commitments and events (plus their travel), and meals.
-    function freeRanges(iso) {
-      const wake = toMin(P.routine.wake) ?? 8 * 60, bed = toMin(P.routine.bed) ?? 23 * 60;
-      let free = [[wake + 30, bed - 30]];
+    const dayWindow = () => [toMin(P.routine.wake) ?? 8 * 60, toMin(P.routine.bed) ?? 23 * 60];
+
+    // Time taken by classes (plus walking and the commute), commitments and events (plus travel).
+    function busyRanges(iso) {
       const items = fixedItems(iso);
       const busy = [];
       const classes = items.filter((i) => i.kind === "class");
@@ -100,18 +107,99 @@
         busy.push([toMin(classes[0].start) - commute, toMin(classes[0].start)]);
         busy.push([toMin(classes[classes.length - 1].end), toMin(classes[classes.length - 1].end) + commute]);
       }
-      // Classes get a few minutes either side for walking between buildings.
       items.forEach((i) => {
         const pad = i.kind === "class" ? STUDY.walk : (i.travel || 0);
         busy.push([toMin(i.start) - pad, toMin(i.end) + pad]);
       });
-      MEALS.forEach((m) => busy.push(m));
-      free = subtract(free, busy);
-      return free.filter(([s, e]) => e - s >= STUDY.minBlock);
+      return busy;
+    }
+
+    // Meals go at the student's preferred time, or the nearest free time within 90 minutes.
+    const mealCache = {};
+    function mealItems(iso) {
+      if (mealCache[iso]) return mealCache[iso];
+      const m = P.routine.meals || {};
+      const len = Number(m.length) || 30;
+      const [wake, bed] = dayWindow();
+      const busy = busyRanges(iso);
+      const out = [];
+      [["breakfast", "Breakfast"], ["lunch", "Lunch"], ["dinner", "Dinner"]].forEach(([key, label]) => {
+        const pref = toMin(m[key]);
+        if (pref == null) return;
+        for (const off of MEAL_SEARCH) {
+          const s = pref + off, e = s + len;
+          if (s < wake || e > bed) continue;
+          if (busy.some(([bs, be]) => s < be && bs < e)) continue;
+          busy.push([s, e]);
+          out.push({ kind: "meal", id: `meal:${key}:${iso}`, title: label, sub: "", start: toTime(s), end: toTime(e) });
+          break;
+        }
+      });
+      return (mealCache[iso] = out);
+    }
+
+    function freeRanges(iso) {
+      const [wake, bed] = dayWindow();
+      const busy = busyRanges(iso).concat(mealItems(iso).map((i) => [toMin(i.start), toMin(i.end)]));
+      return subtract([[wake + 30, bed - 30]], busy).filter(([s, e]) => e - s >= STUDY.minBlock);
+    }
+
+    // ---------- what's actually been studied ----------
+    const blockMinutes = (b) => toMin(b.end) - toMin(b.start);
+    // Minutes studied for a course on a date: timed sessions, plus study blocks ticked off without a timer.
+    function actualMinutes(courseId, iso) {
+      const timed = sessions.filter((x) => x.courseId === courseId && x.date === iso);
+      let min = timed.reduce((s, x) => s + (Number(x.minutes) || 0), 0);
+      const timedBlocks = new Set(timed.map((x) => x.blockId).filter(Boolean));
+      (locked[iso] || []).forEach((b) => { if (b.courseId === courseId && studyDone[b.id] && !timedBlocks.has(b.id)) min += blockMinutes(b); });
+      return min;
+    }
+
+    // How much more time a course has been taking than planned over the last
+    // two weeks, plus a nudge for low grades. 1 = as planned, up to 1.6.
+    const effortCache = {};
+    function effort(c) {
+      if (effortCache[c.id]) return effortCache[c.id];
+      let planned = 0, actual = 0;
+      for (let k = 1; k <= 14; k++) {
+        const iso = addDays(today, -k);
+        if (iso < since) break;
+        (locked[iso] || []).forEach((b) => { if (b.courseId === c.id) planned += blockMinutes(b); });
+        actual += actualMinutes(c.id, iso);
+      }
+      let f = planned >= 120 && actual > planned ? Math.min(1.4, actual / planned) : 1;
+      const avg = gradeAverage(c);
+      if (avg != null && avg < 70) f *= 1.15;
+      return (effortCache[c.id] = Math.round(f * 100) / 100);
+    }
+
+    function gradeAverage(c) {
+      const grades = progress.grades || {};
+      let earned = 0, w = 0;
+      c.assessments.forEach((a) => {
+        const g = grades[a.id], wt = Number(a.weight) || 0;
+        if (g !== undefined && g !== "" && wt) { earned += wt * Number(g); w += wt; }
+      });
+      return w ? earned / w : null;
+    }
+
+    // Planned study from the last week that didn't happen, per course.
+    const missedCache = {};
+    function missedMinutes(c) {
+      if (missedCache[c.id] != null) return missedCache[c.id];
+      let m = 0;
+      for (let k = 1; k <= 7; k++) {
+        const iso = addDays(today, -k);
+        if (iso < since) break;
+        const planned = (locked[iso] || []).filter((b) => b.courseId === c.id).reduce((s, b) => s + blockMinutes(b), 0);
+        m += Math.max(0, planned - actualMinutes(c.id, iso));
+      }
+      return (missedCache[c.id] = m);
     }
 
     // How much a course needs attention on a date: upcoming, unfinished,
-    // heavily weighted work counts most, and sooner counts more.
+    // heavily weighted work counts most, and sooner counts more. Missed study
+    // and courses that take longer than planned get a boost.
     function priority(c, iso) {
       let p = 1;
       c.assessments.forEach((a) => {
@@ -120,7 +208,8 @@
         if (d < 0 || d > STUDY.lookahead) return;
         p += (Number(a.weight) || 5) * (STUDY.lookahead - d + 1) / STUDY.lookahead;
       });
-      return p;
+      if (iso >= today) p += (missedMinutes(c) / 60) * 2;
+      return p * effort(c);
     }
 
     function nextFor(c, iso) {
@@ -129,15 +218,18 @@
         .sort((a, b) => a.due.localeCompare(b.due))[0];
     }
 
-    // ---------- the weekly study plan ----------
-    const planCache = {};
-    function weekPlan(monday) {
-      if (planCache[monday]) return planCache[monday];
-      const dates = DAYS.map((_, i) => addDays(monday, i)).filter(inTerm);
-      const plan = {};
-      if (!P.courses.length || !dates.length) return (planCache[monday] = plan);
+    function blockLabel(c, iso) {
+      const next = nextFor(c, iso);
+      return !next ? "Review this week's material"
+        : next.due === iso ? `Finish ${next.name || next.type} (due today)`
+        : `Prep for ${next.name || next.type} (${shortDate(next.due)})`;
+    }
 
-      // Split each day's free time into study-sized blocks.
+    // ---------- scheduling ----------
+    // Fill the given days with study blocks: `goal` minutes in total, shared out
+    // by free time, choosing a course for each block by priority.
+    function schedule(dates, goal, used) {
+      const plan = {};
       const blocks = {};
       let freeTotal = 0;
       dates.forEach((iso) => {
@@ -152,14 +244,9 @@
           }
         });
       });
-
-      // Share the weekly goal across days in proportion to their free time.
-      const goal = Math.max(0, Number(P.study.weeklyHours) || 0) * 60 * (dates.length / 7);
-      const used = {};
-      P.courses.forEach((c) => { used[c.id] = 0; });
       dates.forEach((iso) => {
         const dayFree = blocks[iso].reduce((s, [a, b]) => s + (b - a), 0);
-        let quota = freeTotal ? Math.round((goal * dayFree / freeTotal) / 15) * 15 : 0;
+        let quota = freeTotal ? Math.min(dayFree, Math.round((goal * dayFree / freeTotal) / 15) * 15) : 0;
         const out = [];
         let focus = null;
         if (P.study.style === "focus") {
@@ -177,29 +264,104 @@
           used[c.id] += len;
           todayUsed[c.id] = true;
           quota -= len;
-          const next = nextFor(c, iso);
-          out.push({
-            kind: "study", id: `std:${iso}:${toTime(s)}`, course: c, title: c.code, start: toTime(s), end: toTime(s + len),
-            sub: !next ? "Review this week's material"
-              : next.due === iso ? `Finish ${next.name || next.type} (due today)`
-              : `Prep for ${next.name || next.type} (${shortDate(next.due)})`,
-          });
+          out.push({ kind: "study", id: `std:${iso}:${toTime(s)}`, course: c, courseId: c.id, title: c.code, start: toTime(s), end: toTime(s + len), sub: blockLabel(c, iso) });
         }
         plan[iso] = out;
       });
+      return plan;
+    }
+
+    const weekGoal = (n) => Math.max(0, Number(P.study.weeklyHours) || 0) * 60 * (n / 7);
+    const zeroUsed = () => { const u = {}; P.courses.forEach((c) => { u[c.id] = 0; }); return u; };
+
+    // A week planned from scratch, ignoring what's happened. Used for past days
+    // that were never locked (e.g. before the student started using the app).
+    const plainCache = {};
+    function plainWeek(monday) {
+      if (!plainCache[monday]) {
+        const dates = DAYS.map((_, i) => addDays(monday, i)).filter(inTerm);
+        plainCache[monday] = P.courses.length && dates.length ? schedule(dates, weekGoal(dates.length), zeroUsed()) : {};
+      }
+      return plainCache[monday];
+    }
+
+    function lockedBlocks(iso) {
+      if (!locked[iso]) return null;
+      return locked[iso].filter((b) => courseById[b.courseId]).map((b) => {
+        const c = courseById[b.courseId];
+        return { kind: "study", id: b.id, course: c, courseId: c.id, title: c.code, start: b.start, end: b.end, sub: b.sub };
+      });
+    }
+
+    // Past days are fixed (locked). Today and later are planned live: the week's
+    // goal minus what's already been studied this week is spread over the days
+    // left, so missed study moves forward instead of disappearing.
+    const planCache = {};
+    function weekPlan(monday) {
+      if (planCache[monday]) return planCache[monday];
+      const dates = DAYS.map((_, i) => addDays(monday, i)).filter(inTerm);
+      const plan = {};
+      if (!P.courses.length || !dates.length) return (planCache[monday] = plan);
+      const past = dates.filter((d) => d < today), live = dates.filter((d) => d >= today);
+      past.forEach((d) => { plan[d] = lockedBlocks(d) || plainWeek(monday)[d] || []; });
+      if (live.length) {
+        const used = zeroUsed();
+        let studied = 0;
+        past.forEach((d) => P.courses.forEach((c) => { const m = actualMinutes(c.id, d); used[c.id] += m; studied += m; }));
+        // If the week has already started, the remaining goal is what's left of the full week's goal.
+        const goal = past.length ? Math.max(0, weekGoal(dates.length) - studied) : weekGoal(dates.length);
+        Object.assign(plan, schedule(live, goal, used));
+      }
       return (planCache[monday] = plan);
     }
 
-    const studyOn = (iso) => (inTerm(iso) ? weekPlan(mondayOf(iso))[iso] || [] : []);
+    function studyStatus(b, iso) {
+      const timed = sessions.some((x) => x.blockId === b.id);
+      if (studyDone[b.id] || timed) return "done";
+      if (iso < since) return "past";
+      return iso < today ? "missed" : "planned";
+    }
+
+    const studyOn = (iso) => (inTerm(iso) ? (weekPlan(mondayOf(iso))[iso] || []).map((b) => Object.assign({}, b, { status: studyStatus(b, iso) })) : []);
+
+    // Days before today whose plan hasn't been saved yet, so the app can lock them.
+    function unlockedPast() {
+      const out = {};
+      if (!termStart) return out;
+      const end = addDays(today, -1) < termEnd ? addDays(today, -1) : termEnd;
+      for (let d = termStart > since ? termStart : since; d <= end; d = addDays(d, 1)) {
+        if (locked[d]) continue;
+        // Prefer the plan the student actually saw that day, if the app was opened.
+        const seen = progress.lastSeen;
+        if (seen && seen.date === d) { out[d] = seen.blocks; continue; }
+        out[d] = (weekPlan(mondayOf(d))[d] || []).map((b) => ({ id: b.id, courseId: b.courseId, start: b.start, end: b.end, sub: b.sub }));
+      }
+      return out;
+    }
 
     function day(iso) {
       const br = breakOn(iso);
       return {
         iso, dow: dow(iso), label: shortDate(iso),
         inTerm: inTerm(iso), isBreak: !!br, breakLabel: br ? br.label : "", isExam: isExamDay(iso), isClassDay: isClassDay(iso),
-        items: fixedItems(iso).concat(studyOn(iso)).sort((a, b) => toMin(a.start) - toMin(b.start)),
+        items: fixedItems(iso).concat(inTerm(iso) ? mealItems(iso) : [], studyOn(iso)).sort((a, b) => toMin(a.start) - toMin(b.start)),
         due: dueOn(iso),
       };
+    }
+
+    // Planned vs actual study per course over the last 14 days (for insights).
+    function timeReport() {
+      return P.courses.map((c) => {
+        let planned = 0, actual = 0;
+        for (let k = 0; k < 14; k++) {
+          const iso = addDays(today, -k);
+          if (iso < since) break;
+          const blocks = k === 0 ? studyOn(iso) : (lockedBlocks(iso) || []);
+          planned += blocks.filter((b) => b.courseId === c.id).reduce((s, b) => s + blockMinutes(b), 0);
+          actual += actualMinutes(c.id, iso);
+        }
+        return { course: c, planned, actual, effort: effort(c), missed: missedMinutes(c) };
+      });
     }
 
     // ---------- the weeks of the term, for the week picker ----------
@@ -224,7 +386,7 @@
       return out;
     }
 
-    return { day, weeks, deadlines: () => deadlines, dueOn, studyOn, inTerm, isClassDay, termStart, termEnd };
+    return { today, day, weeks, deadlines: () => deadlines, dueOn, studyOn, inTerm, isClassDay, termStart, termEnd, unlockedPast, timeReport, actualMinutes };
   }
 
   // Queen's letter grade for a percentage.

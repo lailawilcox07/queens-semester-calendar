@@ -36,19 +36,19 @@ window.DEMO_PROFILE = {
      "location": "Goodwin 254",
      "slots": [
       {
-       "id": "Mon09:30d70x",
+       "id": "Mon09:3044fz",
        "day": "Mon",
        "start": "09:30",
        "end": "10:30"
       },
       {
-       "id": "Wed08:30qj0i",
+       "id": "Wed08:30vhte",
        "day": "Wed",
        "start": "08:30",
        "end": "09:30"
       },
       {
-       "id": "Thu10:30xfeo",
+       "id": "Thu10:30fwju",
        "day": "Thu",
        "start": "10:30",
        "end": "11:30"
@@ -61,7 +61,7 @@ window.DEMO_PROFILE = {
      "location": "Goodwin 248",
      "slots": [
       {
-       "id": "Thu14:30lab6",
+       "id": "Thu14:30y3op",
        "day": "Thu",
        "start": "14:30",
        "end": "16:30"
@@ -120,19 +120,19 @@ window.DEMO_PROFILE = {
      "location": "Stirling A",
      "slots": [
       {
-       "id": "Tue11:30hmk3",
+       "id": "Tue11:308k4i",
        "day": "Tue",
        "start": "11:30",
        "end": "12:30"
       },
       {
-       "id": "Thu12:30mdr8",
+       "id": "Thu12:30kxf3",
        "day": "Thu",
        "start": "12:30",
        "end": "13:30"
       },
       {
-       "id": "Fri10:30rtew",
+       "id": "Fri10:30q3xc",
        "day": "Fri",
        "start": "10:30",
        "end": "11:30"
@@ -145,7 +145,7 @@ window.DEMO_PROFILE = {
      "location": "Jeffery 127",
      "slots": [
       {
-       "id": "Fri14:30wao1",
+       "id": "Fri14:30x3ts",
        "day": "Fri",
        "start": "14:30",
        "end": "15:30"
@@ -210,13 +210,13 @@ window.DEMO_PROFILE = {
      "location": "Biosciences Aud",
      "slots": [
       {
-       "id": "Mon13:304icc",
+       "id": "Mon13:30wjek",
        "day": "Mon",
        "start": "13:30",
        "end": "15:00"
       },
       {
-       "id": "Wed13:30welg",
+       "id": "Wed13:304fib",
        "day": "Wed",
        "start": "13:30",
        "end": "15:00"
@@ -267,13 +267,13 @@ window.DEMO_PROFILE = {
     "commute": 10,
     "slots": [
      {
-      "id": "Tue19:00il0e",
+      "id": "Tue19:00t9ky",
       "day": "Tue",
       "start": "19:00",
       "end": "21:00"
      },
      {
-      "id": "Sun16:00488o",
+      "id": "Sun16:00f6cv",
       "day": "Sun",
       "start": "16:00",
       "end": "18:00"
@@ -286,7 +286,7 @@ window.DEMO_PROFILE = {
     "commute": 15,
     "slots": [
      {
-      "id": "Sat10:00jp43",
+      "id": "Sat10:005t6l",
       "day": "Sat",
       "start": "10:00",
       "end": "15:00"
@@ -303,15 +303,29 @@ window.DEMO_PROFILE = {
     "end": "17:00",
     "commute": 15
    }
-  ]
+  ],
+  "meals": {
+   "breakfast": "",
+   "lunch": "12:00",
+   "dinner": "18:00",
+   "length": 30
+  }
  },
  "study": {
   "style": "spread",
   "weeklyHours": 18
  },
  "progress": {
-  "done": {},
+  "done": {
+   "a1": true,
+   "b1": true,
+   "b2": true
+  },
   "started": {},
-  "grades": {}
+  "grades": {
+   "a1": 82,
+   "b1": 90,
+   "b2": 76
+  }
  }
 };

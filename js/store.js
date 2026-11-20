@@ -10,7 +10,7 @@
       step: 0,
       term: { presetId: "", label: "", classesStart: "", classesEnd: "", examStart: "", examEnd: "", breaks: [] },
       courses: [],
-      routine: { wake: "08:00", bed: "23:00", commute: 15, commitments: [], oneoffs: [] },
+      routine: { wake: "08:00", bed: "23:00", commute: 15, commitments: [], oneoffs: [], meals: { breakfast: "", lunch: "12:00", dinner: "18:00", length: 30 } },
       study: { style: "spread", weeklyHours: 15 },
     };
   }
