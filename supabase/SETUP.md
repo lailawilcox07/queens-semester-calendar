@@ -65,13 +65,15 @@ Students sign in with a 6-digit code sent to their email.
 ```
 npx supabase login
 npx supabase link --project-ref YOUR_PROJECT_ID
-npx supabase db push
+npx supabase db push --remote
 npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 npx supabase functions deploy extract
 npx supabase functions deploy course-lookup
 npx supabase functions deploy phone-link
 npx supabase functions deploy reminders
 ```
+
+Newer versions of the Supabase command line work on a local copy by default. If a command mentions the "local stack" or Docker, add `--remote` to send it to your project instead.
 
 `db push` creates:
 - `student_data`: one row per student holding their semester. Each student can only read and change their own row.
