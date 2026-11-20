@@ -50,7 +50,8 @@
     try {
       await loadLib();
       sb = root.supabase.createClient(cfg().supabaseUrl, cfg().supabaseKey, {
-        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
+        // detectSessionInUrl: opening the sign-in link from the email signs this device in.
+        auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: "implicit" },
       });
       const { data } = await sb.auth.getSession();
       // Opened from the laptop's QR code: sign in with its one-time code.
@@ -200,7 +201,7 @@
     } else if (panel.step === "code") {
       body = `
         <h3>Check your email</h3>
-        <p class="muted small">We sent a 6-digit code to <b>${esc(panel.email)}</b>. It can take a minute, so check your junk folder too.</p>
+        <p class="muted small">We sent an email to <b>${esc(panel.email)}</b>. Enter the 6-digit code from it, or open its sign-in link on this device. It can take a minute, so check your junk folder too.</p>
         <form data-s-form="code" class="acct-form" autocomplete="off">
           <input id="acctCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" aria-label="6-digit code" required>
           <button type="submit" class="btn primary small" ${panel.busy ? "disabled" : ""}>${panel.busy ? "Checking…" : "Sign in"}</button>
@@ -228,7 +229,7 @@
       return;
     }
     panel.email = email; panel.busy = true; panel.error = ""; hooks.rerender();
-    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
+    const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: location.origin + location.pathname } });
     panel.busy = false;
     if (error) panel.error = error.message && /rate|seconds/i.test(error.message) ? "Please wait a minute before asking for another code." : "Couldn't send the code. Check the address and try again.";
     else panel.step = "code";

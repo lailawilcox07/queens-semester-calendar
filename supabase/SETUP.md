@@ -56,9 +56,10 @@ Students sign in with a 6-digit code sent to their email.
    <p>If you didn't ask for this, you can ignore this email.</p>
    ```
 
+   Editing templates needs your own email sender (step 5 below). Until then, Supabase's default email has a sign-in link but no code. The app accepts that link too, opened on the same device, so you can test without it.
 3. Under **Authentication → Emails**, the same one-time code also powers the QR code on a laptop that signs the phone in. Leave **Email OTP Expiration** at a short time, like 10 minutes (600 seconds), so an old QR code can't be reused later.
-4. Go to **Authentication → URL Configuration** and set **Site URL** to `https://lailawilcox07.github.io/queens-semester-calendar/`.
-5. **Before the pilot:** Supabase's built-in email sender only allows a handful of emails per hour and is meant for testing. Under **Authentication → Emails → SMTP Settings**, connect a real email service, such as Resend.
+4. Go to **Authentication → URL Configuration**. Set **Site URL** to `https://lailawilcox07.github.io/queens-semester-calendar/`, and add the same address under **Redirect URLs**.
+5. **Before the pilot:** Supabase's built-in email sender only allows a handful of emails per hour, is meant for testing, and only sends to members of your Supabase team. To test with your Queen's email before setting this up, invite it under **Organization settings → Team**. Under **Authentication → Emails → SMTP Settings**, connect a real email service, such as Resend.
 
 ## 4. Create the database tables and deploy the functions
 
