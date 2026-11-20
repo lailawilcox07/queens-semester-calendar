@@ -533,17 +533,17 @@ body:has(.timer-bar) .tabbar{top:auto; position:static;}
    Classic is the default (above). Each scheme has a light and a dark version;
    which one shows depends on the Light / Dark / Auto choice. */
 html[data-theme="queens"]{ --bg:#F6F5F1; --accent:#14325C; --accent-ink:#FFFFFF; --accent-tint:#E2E8F1; }
-html[data-theme="lake"]{ --bg:#F2F6F8; --line:#DCE3E8; --accent:#2B6A8F; --accent-ink:#FFFFFF; --accent-tint:#DDEBF3; }
+html[data-theme="sunset"]{ --bg:#FBF6F1; --line:#EDE1D6; --accent:#B5531A; --accent-ink:#FFFFFF; --accent-tint:#F8E5D6; }
 html[data-theme="blossom"]{ --bg:#FAF4F4; --line:#EBDFE0; --accent:#9A3E62; --accent-ink:#FFFFFF; --accent-tint:#F5E1E8; }
 html[data-theme="lavender"]{ --bg:#F7F5FA; --line:#E3DFEA; --accent:#5B4B9A; --accent-ink:#FFFFFF; --accent-tint:#E8E3F5; }
 @media (prefers-color-scheme: dark){
   html[data-theme="queens"]:not([data-mode="light"]){ --bg:#15181E; --surface:#1D2129; --line:#2E3440; --accent:#9DB7E6; --accent-ink:#0E1A2E; --accent-tint:#1F2A3D; }
-  html[data-theme="lake"]:not([data-mode="light"]){ --bg:#141A1D; --surface:#1B2327; --line:#2B363C; --accent:#86C0E0; --accent-ink:#0D1F2A; --accent-tint:#1B2E38; }
+  html[data-theme="sunset"]:not([data-mode="light"]){ --bg:#1C1713; --surface:#251E19; --line:#3A2F27; --accent:#F2A266; --accent-ink:#2A1505; --accent-tint:#3A2618; }
   html[data-theme="blossom"]:not([data-mode="light"]){ --bg:#1C1618; --surface:#251D20; --line:#3A2E32; --accent:#E7A3BF; --accent-ink:#2A1018; --accent-tint:#3A2229; }
   html[data-theme="lavender"]:not([data-mode="light"]){ --bg:#15141B; --surface:#1D1B25; --line:#2F2C3A; --accent:#B4A6F0; --accent-ink:#17122E; --accent-tint:#26223D; }
 }
 html[data-theme="queens"][data-mode="dark"]{ --bg:#15181E; --surface:#1D2129; --line:#2E3440; --accent:#9DB7E6; --accent-ink:#0E1A2E; --accent-tint:#1F2A3D; }
-html[data-theme="lake"][data-mode="dark"]{ --bg:#141A1D; --surface:#1B2327; --line:#2B363C; --accent:#86C0E0; --accent-ink:#0D1F2A; --accent-tint:#1B2E38; }
+html[data-theme="sunset"][data-mode="dark"]{ --bg:#1C1713; --surface:#251E19; --line:#3A2F27; --accent:#F2A266; --accent-ink:#2A1505; --accent-tint:#3A2618; }
 html[data-theme="blossom"][data-mode="dark"]{ --bg:#1C1618; --surface:#251D20; --line:#3A2E32; --accent:#E7A3BF; --accent-ink:#2A1018; --accent-tint:#3A2229; }
 html[data-theme="lavender"][data-mode="dark"]{ --bg:#15141B; --surface:#1D1B25; --line:#2F2C3A; --accent:#B4A6F0; --accent-ink:#17122E; --accent-tint:#26223D; }
 

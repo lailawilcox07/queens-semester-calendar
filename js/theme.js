@@ -8,14 +8,15 @@
   const THEMES = [
     { id: "classic", label: "Classic", swatch: "#355E56" },
     { id: "queens", label: "Queen's", swatch: "#14325C" },
-    { id: "lake", label: "Lake", swatch: "#2B6A8F" },
+    { id: "sunset", label: "Sunset", swatch: "#B5531A" },
     { id: "blossom", label: "Blossom", swatch: "#9A3E62" },
     { id: "lavender", label: "Lavender", swatch: "#5B4B9A" },
   ];
   const MODES = [["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]];
   const valid = (id) => THEMES.some((t) => t.id === id);
   const validMode = (m) => MODES.some(([id]) => id === m);
-  const read = (k, ok, dflt) => { try { const v = localStorage.getItem(k); return ok(v) ? v : dflt; } catch (e) { return dflt; } };
+  const RENAMED = { lake: "sunset" }; // older names still work
+  const read = (k, ok, dflt) => { try { let v = localStorage.getItem(k); v = RENAMED[v] || v; return ok(v) ? v : dflt; } catch (e) { return dflt; } };
 
   const current = () => read(KEY, valid, "classic");
   const mode = () => read(MODE_KEY, validMode, "auto");

@@ -176,6 +176,7 @@
     const a = document.activeElement;
     const focusKey = a && a.dataset && (a.dataset.a || a.dataset.bind) ? `[data-${a.dataset.a ? "a" : "bind"}="${a.dataset.a || a.dataset.bind}"][data-id="${a.dataset.id || ""}"]` : null;
     // A colour scheme chosen on another device arrives with the synced profile.
+    if (P.prefs && P.prefs.theme === "lake") P.prefs.theme = "sunset";
     if (P.prefs && ((Theme.valid(P.prefs.theme) && P.prefs.theme !== Theme.current()) || (Theme.validMode(P.prefs.mode) && P.prefs.mode !== Theme.mode())))
       Theme.apply(Theme.valid(P.prefs.theme) ? P.prefs.theme : Theme.current(), Theme.validMode(P.prefs.mode) ? P.prefs.mode : Theme.mode());
     const acct = document.getElementById("account");
