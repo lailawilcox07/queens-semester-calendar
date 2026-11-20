@@ -30,32 +30,44 @@
     }
   }
 
+  // Fill in defaults and convert old formats, for saves from this device or the account.
+  function normalize(p) {
+    const base = emptyProfile();
+    migrate(p);
+    return Object.assign(base, p, {
+      term: Object.assign(base.term, p.term),
+      routine: Object.assign(base.routine, p.routine),
+      study: Object.assign(base.study, p.study),
+    });
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return emptyProfile();
-      const p = JSON.parse(raw);
-      // Fill any fields added in later versions so old saves keep working.
-      const base = emptyProfile();
-      migrate(p);
-      return Object.assign(base, p, {
-        term: Object.assign(base.term, p.term),
-        routine: Object.assign(base.routine, p.routine),
-        study: Object.assign(base.study, p.study),
-      });
+      return raw ? normalize(JSON.parse(raw)) : emptyProfile();
     } catch (e) {
       return emptyProfile();
     }
   }
 
+  // Every change stamps the time, so sync can tell which copy is newer.
+  // keepTime is for copies that came from the account and shouldn't look new.
+  function stamp(profile, opts) {
+    if (opts && opts.keepTime) return;
+    profile.meta = Object.assign({}, profile.meta, { updatedAt: Date.now() });
+    if (root.Sync && !profile.meta.demo) root.Sync.schedulePush();
+  }
+
   let saveTimer = null;
   function save(profile) {
+    stamp(profile);
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
       try { localStorage.setItem(KEY, JSON.stringify(profile)); } catch (e) {}
     }, 150);
   }
-  function saveNow(profile) {
+  function saveNow(profile, opts) {
+    stamp(profile, opts);
     clearTimeout(saveTimer);
     try { localStorage.setItem(KEY, JSON.stringify(profile)); } catch (e) {}
   }
@@ -63,5 +75,5 @@
     try { localStorage.removeItem(KEY); } catch (e) {}
   }
 
-  root.Store = { load, save, saveNow, clear, emptyProfile };
+  root.Store = { load, save, saveNow, clear, emptyProfile, normalize };
 })(window);

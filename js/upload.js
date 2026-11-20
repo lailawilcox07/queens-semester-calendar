@@ -57,11 +57,12 @@
 
   async function send(kind, files, term) {
     const c = cfg();
+    const token = root.Sync ? await root.Sync.accessToken() : null;
     let res;
     try {
       res = await fetch(c.supabaseUrl.replace(/\/$/, "") + "/functions/v1/extract", {
         method: "POST",
-        headers: { "Content-Type": "application/json", apikey: c.supabaseKey },
+        headers: Object.assign({ "Content-Type": "application/json", apikey: c.supabaseKey }, token ? { Authorization: "Bearer " + token } : {}),
         body: JSON.stringify({ kind, files: files.map(({ type, data }) => ({ type, data })), termStart: term.classesStart, termEnd: term.examEnd || term.classesEnd }),
       });
     } catch (e) {

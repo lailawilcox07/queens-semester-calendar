@@ -174,8 +174,10 @@
     // Keep focus on the same control across re-renders (e.g. tabbing through grades).
     const a = document.activeElement;
     const focusKey = a && a.dataset && (a.dataset.a || a.dataset.bind) ? `[data-${a.dataset.a ? "a" : "bind"}="${a.dataset.a || a.dataset.bind}"][data-id="${a.dataset.id || ""}"]` : null;
-    if (P.setupComplete && P.step >= STEPS.length) app.innerHTML = App.render(P) + renderFooter();
-    else app.innerHTML = renderShell(STEPS[P.step].id);
+    const acct = document.getElementById("account");
+    if (acct) acct.innerHTML = Sync.chipHTML();
+    if (P.setupComplete && P.step >= STEPS.length) app.innerHTML = Sync.panelHTML() + App.render(P) + renderFooter();
+    else app.innerHTML = Sync.panelHTML() + renderShell(STEPS[P.step].id);
     window.scrollTo(0, keepScroll ? scrollY : 0);
     if (P.setupComplete && P.step >= STEPS.length) App.afterRender(app);
     if (focusKey && keepScroll) { const el = app.querySelector(focusKey); if (el) el.focus({ preventScroll: true }); }
@@ -237,6 +239,7 @@
         <p class="muted small">You can skip anything and come back to it later.</p>
         <button type="button" class="btn primary big" data-act="next">${resuming ? "Continue setup" : "Get started"}</button>
         ${resuming ? "" : `<p><button type="button" class="link-btn" data-act="demo">Or try a demo with sample courses</button></p>`}
+        ${Sync.enabled() && !Sync.user() ? `<p class="small muted">Already set up on another device? <button type="button" class="link-btn" data-s="open">Sign in</button></p>` : ""}
       </section>`;
   }
 
@@ -413,6 +416,12 @@
   }
 
   function startUpload(kind, courseId) {
+    if (Sync.enabled() && !Sync.user()) {
+      // Uploads cost money to read, so they're limited per student and need an account.
+      Sync.open();
+      window.scrollTo(0, 0);
+      return;
+    }
     const input = document.getElementById("filePick");
     input.accept = kind === "timetable" ? "image/*" : "application/pdf,image/*";
     input.onchange = async () => {
@@ -853,6 +862,7 @@
       case "demo":
         // Load a sample student and jump to a day in the middle of their term.
         P = JSON.parse(JSON.stringify(window.DEMO_PROFILE));
+        P.meta = { demo: true };
         Store.saveNow(P);
         location.search = "?today=2027-02-08";
         break;
@@ -956,6 +966,22 @@
   });
 
   App.init({ save: () => persist(), rerender: () => render(), profile: () => P });
+
+  // Account sign-in and sync (only when a Supabase project is configured).
+  document.addEventListener("click", (e) => { Sync.handle(e); });
+  document.addEventListener("submit", (e) => { Sync.handle(e); });
+  Sync.init({
+    getProfile: () => P,
+    replace: (data) => {
+      P = Store.normalize(data);
+      if (P.setupComplete) P.step = STEPS.length;
+      returnToReview = false;
+      Store.saveNow(P, { keepTime: true });
+      render();
+    },
+    clearLocal: () => { Store.clear(); P = Store.emptyProfile(); returnToReview = false; render(); },
+    rerender: () => render(),
+  });
   if (P.setupComplete) P.step = STEPS.length;
   render();
 })();
