@@ -69,10 +69,10 @@
   function weekBlocks() {
     const out = [];
     P.courses.forEach((c) => c.meetings.forEach((m) => m.days.forEach((d) => {
-      if (m.start && m.end) out.push({ day: d, start: m.start, end: m.end, label: c.code + " " + m.type, sub: m.location, color: c.color, kind: "class", ref: m.id });
+      if (m.start && m.end) out.push({ day: d, start: m.start, end: m.end, label: c.code + " " + m.type, title: c.code, type: m.type, sub: m.location, color: c.color, kind: "class", ref: m.id });
     })));
     P.routine.commitments.forEach((m) => m.days.forEach((d) => {
-      if (m.start && m.end) out.push({ day: d, start: m.start, end: m.end, label: m.label || "Commitment", sub: "", color: 0, kind: "fixed", ref: m.id });
+      if (m.start && m.end) out.push({ day: d, start: m.start, end: m.end, label: m.label || "Commitment", title: m.label || "Commitment", type: "", sub: "", color: 0, kind: "fixed", ref: m.id });
     }));
     return out;
   }
@@ -398,7 +398,7 @@
     let lo = 8 * 60, hi = 18 * 60;
     blocks.forEach((b) => { lo = Math.min(lo, toMin(b.start)); hi = Math.max(hi, toMin(b.end)); });
     lo = Math.floor(lo / 60) * 60; hi = Math.ceil(hi / 60) * 60;
-    const pxPerMin = 0.8, height = (hi - lo) * pxPerMin;
+    const pxPerMin = 1.1, height = (hi - lo) * pxPerMin;
     const hours = [];
     for (let m = lo; m <= hi; m += 60) hours.push(m);
     // Overlapping blocks sit side by side instead of on top of each other.
@@ -422,11 +422,21 @@
           ${hours.map((m) => `<div class="wk-line" style="top:${(m - lo) * pxPerMin}px"></div>`).join("")}
           ${lanes(blocks.filter((b) => b.day === d)).map((b) => `
             <div class="wk-block ${b.kind === "fixed" ? "fixed" : "c" + b.color}" style="top:${(toMin(b.start) - lo) * pxPerMin}px;left:calc(${(b.lane / b.lanes) * 100}% + 2px);width:calc(${100 / b.lanes}% - 4px);height:${Math.max(18, (toMin(b.end) - toMin(b.start)) * pxPerMin)}px" title="${esc(b.label)} ${fmtTime(b.start)}–${fmtTime(b.end)}">
-              <b>${esc(b.label)}</b><span>${fmtTime(b.start)}</span>
+              <b>${esc(b.title)}</b>${b.type ? `<span>${esc(b.type)}</span>` : ""}<span class="wk-time">${fmtTime(b.start)}–${fmtTime(b.end)}</span>
             </div>`).join("")}
         </div>
       </div>`;
-    return `
+    // Phones get a day-by-day list; wider screens get the week grid.
+    const agenda = `<div class="agenda">${days.map((d) => {
+      const list = blocks.filter((b) => b.day === d).sort((a, b) => toMin(a.start) - toMin(b.start));
+      return `<div class="ag-day"><h4>${({ Mon: "Monday", Tue: "Tuesday", Wed: "Wednesday", Thu: "Thursday", Fri: "Friday", Sat: "Saturday", Sun: "Sunday" })[d]}</h4>
+        ${list.length ? list.map((b) => `
+          <div class="ag-item ${b.kind === "fixed" ? "fixed" : "c" + b.color}">
+            <span class="ag-time mono">${fmtTime(b.start)}<br>${fmtTime(b.end)}</span>
+            <span class="ag-body"><b>${esc(b.title)}</b>${b.type ? ` ${esc(b.type)}` : ""}${b.sub ? `<span class="muted"> · ${esc(b.sub)}</span>` : ""}</span>
+          </div>`).join("") : `<p class="empty small">Nothing scheduled</p>`}</div>`;
+    }).join("")}</div>`;
+    return agenda + `
       <div class="wk" style="--cols:${days.length}">
         <div class="wk-times" style="height:${height}px">${hours.map((m) => `<span style="top:${(m - lo) * pxPerMin}px">${fmtTime(String(Math.floor(m / 60)).padStart(2, "0") + ":00")}</span>`).join("")}</div>
         ${days.map(col).join("")}
