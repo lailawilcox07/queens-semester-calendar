@@ -1,0 +1,4 @@
+# The site calls this function with the publishable key in the apikey header,
+# which the function checks itself, so the platform JWT check is turned off.
+[functions.extract]
+verify_jwt = false

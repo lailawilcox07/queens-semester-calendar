@@ -8,10 +8,13 @@ Everything a student enters is saved in their own browser. There are no accounts
 
 **Milestone 1: setup flow (done).** Covers term dates, courses, class times, deadlines and weights, weekly routine, study style, and a review screen with clash and weight checks.
 
+**Milestone 2: upload to autofill (built, needs backend setup).** Students can upload a SOLUS or Qflow timetable screenshot to fill in courses and class times, or a syllabus to fill in deadlines and weights. Claude reads the uploads through a Supabase Edge Function, and students review everything before it's added. See [supabase/SETUP.md](supabase/SETUP.md).
+
 Coming next:
 - Calendar, To-Do, Due and Grades views built from the setup data
+- Optional accounts with sync across devices
 - Guide for adding the app to a phone's home screen
-- Export and import, for backups and moving between devices
+- Push reminders
 
 ## Updating term dates
 

@@ -23,6 +23,8 @@
   let P = Store.load();
   let returnToReview = false;
   let confirmingReset = false;
+  // Uploads being read or reviewed. Not saved: a review is finished in one sitting.
+  const pending = { timetable: null, syllabus: {} };
   const app = document.getElementById("app");
 
   // ---------- small helpers ----------
@@ -196,7 +198,7 @@
           <li><b>Your deadlines</b>: from each syllabus, with grade weights</li>
           <li><b>Your routine</b>: commute, work, practice and study goals</li>
         </ol>
-        <p class="privacy"><b>Private by default.</b> No account needed. Everything you enter stays on this device.</p>
+        <p class="privacy"><b>Private by default.</b> No account needed. Everything you enter stays on this device.${Uploader.enabled() ? " If you upload a syllabus or timetable, it's sent to Claude, Anthropic's AI, to read it. This site doesn't keep a copy." : ""}</p>
         <p class="muted small">Have your syllabi handy. You can skip anything and come back to it later.</p>
         <button type="button" class="btn primary big" data-act="next">${resuming ? "Continue setup" : "Get started"}</button>
       </section>`;
@@ -250,6 +252,7 @@
     return `
       <h2 tabindex="-1">What courses are you taking?</h2>
       <p class="muted">Add each course code, like <span class="mono">MATH 121</span> or <span class="mono">PSYC 100</span>. The name is optional.</p>
+      ${timetablePanel()}
       <form class="card add-course" data-form="course" autocomplete="off">
         <div class="grid2">
           <label>Course code<input id="newCode" name="code" placeholder="CISC 124" required autocapitalize="characters" maxlength="12"></label>
@@ -264,6 +267,141 @@
   function dayToggles(scope, id, days) {
     return `<div class="days" role="group" aria-label="Days">${DAYS.map((d) => `
       <button type="button" class="day ${days.includes(d) ? "on" : ""}" data-act="toggle-day" data-scope="${scope}" data-id="${id}" data-day="${d}" aria-pressed="${days.includes(d)}" aria-label="${d}">${DAY_SHORT[d]}</button>`).join("")}</div>`;
+  }
+
+  // ---------- upload to autofill ----------
+  const spinner = (text) => `<div class="upload-status" role="status"><span class="spinner" aria-hidden="true"></span>${esc(text)}</div>`;
+  const warnList = (w) => w && w.length ? `<div class="alert warn"><b>Double-check</b><ul>${w.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "";
+  const sameMeeting = (a, b) => a.type === b.type && a.start === b.start && a.end === b.end && a.days.join() === b.days.join();
+
+  function timetablePanel() {
+    if (!Uploader.enabled()) return "";
+    const st = pending.timetable;
+    const btn = (label) => `<button type="button" class="btn small" data-act="upload" data-kind="timetable">${label}</button>`;
+    if (!st) return `
+      <div class="card upload-card">
+        <h3>Have a screenshot of your timetable?</h3>
+        <p class="muted small">Upload a screenshot from SOLUS or Qflow and we'll fill in your courses and class times. You'll check everything before it's added.</p>
+        ${btn("Upload timetable screenshot")}
+      </div>`;
+    if (st.status === "loading") return `<div class="card upload-card">${spinner("Reading your timetable. This can take a little while.")}</div>`;
+    if (st.status === "error") return `<div class="card upload-card"><div class="alert warn">${esc(st.error)}</div>${btn("Try again")} <button type="button" class="btn small ghost" data-act="discard" data-kind="timetable">Cancel</button></div>`;
+    const r = st.result;
+    if (!r.courses.length) return `<div class="card upload-card"><div class="alert warn">We couldn't find any classes in that image. Try a clearer screenshot of the weekly view, or type them in below.</div>${warnList(r.warnings)}${btn("Try another screenshot")} <button type="button" class="btn small ghost" data-act="discard" data-kind="timetable">Cancel</button></div>`;
+    let n = 0;
+    const groups = r.courses.map((c, ci) => {
+      const existing = P.courses.find((x) => x.code === normCode(c.course_code));
+      return `<div class="pick-group">
+        <div class="pick-head"><b>${esc(normCode(c.course_code))}</b><span class="muted small">${existing ? "Already in your courses" : "New course, will be added"}</span></div>
+        ${c.meetings.map((m, mi) => {
+          const k = ci + ":" + mi, on = !st.skip.has(k);
+          if (on) n++;
+          return `<label class="pick"><input type="checkbox" data-act="pick" data-kind="timetable" data-k="${k}" ${on ? "checked" : ""}>
+            <span><b>${esc(m.type)}</b> · ${esc(m.days.join(" "))} · ${fmtTime(m.start)}–${fmtTime(m.end)}${m.location ? ` · <span class="muted">${esc(m.location)}</span>` : ""}</span></label>`;
+        }).join("")}
+      </div>`;
+    }).join("");
+    return `<div class="card upload-card review">
+      <h3>Here's what we found</h3>
+      <p class="muted small">Untick anything that's wrong. You can edit times after adding them.</p>
+      ${warnList(r.warnings)}${groups}
+      <div class="add-row"><button type="button" class="btn primary small" data-act="apply-timetable" ${n ? "" : "disabled"}>Add ${n} class time${n === 1 ? "" : "s"}</button>
+      <button type="button" class="btn small ghost" data-act="discard" data-kind="timetable">Discard</button></div>
+    </div>`;
+  }
+
+  function syllabusPanel(c) {
+    if (!Uploader.enabled()) return "";
+    const st = pending.syllabus[c.id];
+    const btn = (label) => `<button type="button" class="btn small" data-act="upload" data-kind="syllabus" data-c="${c.id}">${label}</button>`;
+    if (!st) return `<div class="upload-row">${btn("Upload syllabus")}<span class="muted small">PDF or photos. We'll fill in the deadlines for you to check.</span></div>`;
+    if (st.status === "loading") return spinner("Reading your syllabus. This can take a little while.");
+    if (st.status === "error") return `<div class="alert warn">${esc(st.error)}</div><div class="add-row">${btn("Try again")}<button type="button" class="btn small ghost" data-act="discard" data-kind="syllabus" data-c="${c.id}">Cancel</button></div>`;
+    const r = st.result;
+    const found = r.course_code ? normCode(r.course_code) : "";
+    const mismatch = found && isCode(found) && found !== c.code;
+    let n = 0, total = 0;
+    const rows = r.assessments.map((a, i) => {
+      const on = !st.skip.has(String(i));
+      if (on) { n++; total += a.weight || 0; }
+      return `<label class="pick"><input type="checkbox" data-act="pick" data-kind="syllabus" data-c="${c.id}" data-k="${i}" ${on ? "checked" : ""}>
+        <span class="pick-main"><b>${esc(a.name)}</b> <span class="muted">${esc(a.type)}</span>${a.note ? `<span class="hint">${esc(a.note)}</span>` : ""}</span>
+        <span class="pick-date mono">${a.due_date ? esc(fmtDate(a.due_date)) : "No date"}</span>
+        <span class="pick-weight mono">${a.weight != null ? esc(a.weight) + "%" : ""}</span></label>`;
+    }).join("");
+    return `<div class="review">
+      ${mismatch ? `<div class="alert warn">This looks like the syllabus for <b>${esc(found)}</b>, not ${esc(c.code)}.</div>` : ""}
+      <h3>Found ${r.assessments.length} graded item${r.assessments.length === 1 ? "" : "s"}</h3>
+      <p class="muted small">Untick anything that's wrong. Selected items add up to ${Math.round(total * 100) / 100}%.</p>
+      ${warnList(r.warnings)}
+      ${rows || `<p class="empty">Nothing graded was found.</p>`}
+      <div class="add-row"><button type="button" class="btn primary small" data-act="apply-syllabus" data-c="${c.id}" ${n ? "" : "disabled"}>Add ${n} to ${esc(c.code)}</button>
+      <button type="button" class="btn small ghost" data-act="discard" data-kind="syllabus" data-c="${c.id}">Discard</button></div>
+    </div>`;
+  }
+
+  function startUpload(kind, courseId) {
+    const input = document.getElementById("filePick");
+    input.accept = kind === "timetable" ? "image/*" : "application/pdf,image/*";
+    input.onchange = async () => {
+      const files = Array.from(input.files || []);
+      input.value = "";
+      if (!files.length) return;
+      const set = (v) => { if (kind === "timetable") pending.timetable = v; else pending.syllabus[courseId] = v; };
+      set({ status: "loading" });
+      render();
+      try {
+        const prepared = await Uploader.prepare(files, kind);
+        const result = await Uploader.send(kind, prepared, P.term);
+        const skip = new Set();
+        if (kind === "syllabus") {
+          const have = new Set(course(courseId).assessments.map((a) => (a.name || "").toLowerCase()));
+          result.assessments.forEach((a, i) => { if (have.has(a.name.toLowerCase())) skip.add(String(i)); });
+        } else {
+          result.courses.forEach((c, ci) => {
+            const ex = P.courses.find((x) => x.code === normCode(c.course_code));
+            c.meetings.forEach((m, mi) => { if (ex && ex.meetings.some((em) => sameMeeting(em, m))) skip.add(ci + ":" + mi); });
+          });
+        }
+        set({ status: "review", result, skip });
+      } catch (e) {
+        set({ status: "error", error: e.message });
+      }
+      render();
+    };
+    input.click();
+  }
+
+  function applyTimetable() {
+    const st = pending.timetable;
+    st.result.courses.forEach((c, ci) => {
+      const picked = c.meetings.filter((m, mi) => !st.skip.has(ci + ":" + mi));
+      if (!picked.length) return;
+      const code = normCode(c.course_code);
+      let target = P.courses.find((x) => x.code === code);
+      if (!target) {
+        target = { id: uid(), code, name: c.course_name || "", color: nextColor(), meetings: [], assessments: [] };
+        P.courses.push(target);
+      }
+      picked.forEach((m) => {
+        if (!target.meetings.some((em) => sameMeeting(em, m))) target.meetings.push({ id: uid(), type: m.type, days: m.days.slice(), start: m.start, end: m.end, location: m.location || "" });
+      });
+    });
+    pending.timetable = null;
+    persist();
+    render();
+  }
+
+  function applySyllabus(courseId) {
+    const c = course(courseId), st = pending.syllabus[courseId];
+    st.result.assessments.forEach((a, i) => {
+      if (st.skip.has(String(i))) return;
+      c.assessments.push({ id: uid(), name: a.name, type: a.type, due: a.due_date || "", weight: a.weight == null ? "" : a.weight, note: a.note || "" });
+    });
+    if (!c.name && st.result.course_name) c.name = st.result.course_name;
+    delete pending.syllabus[courseId];
+    persist();
+    render();
   }
 
   function stepClasses() {
@@ -299,6 +437,7 @@
     return `
       <h2 tabindex="-1">When are your classes?</h2>
       <p class="muted">Add each lecture, tutorial and lab, and tap the days it meets. You can find these on SOLUS or your Qflow timetable.</p>
+      ${timetablePanel()}
       ${conf.length ? `<div class="alert warn" role="status"><b>Time clash:</b> ${conf.map((x) => `${x.day} ${esc(x.a.label)} and ${esc(x.b.label)}`).join("; ")}.</div>` : ""}
       ${cards}`;
   }
@@ -315,13 +454,15 @@
           <input type="date" aria-label="Due date" value="${esc(a.due)}" data-bind="assess" data-c="${c.id}" data-id="${a.id}" data-f="due">
           <label class="weight"><input type="number" inputmode="decimal" min="0" max="100" step="0.5" aria-label="Weight in percent" value="${esc(a.weight)}" data-bind="assess" data-c="${c.id}" data-id="${a.id}" data-f="weight"><span>%</span></label>
           <button type="button" class="icon-btn" data-act="del-assess" data-c="${c.id}" data-id="${a.id}" aria-label="Remove ${esc(a.name || a.type)}">×</button>
-          ${a.type === "Final exam" && !a.due ? `<p class="hint">Leave the date blank until the exam schedule is posted.</p>` : ""}
+          ${a.note ? `<p class="hint">${esc(a.note)}</p>` : ""}
+          ${a.type === "Final exam" && !a.due && !a.note ? `<p class="hint">Leave the date blank until the exam schedule is posted.</p>` : ""}
           ${outsideTerm(a) ? `<p class="hint warn-text">This date is outside your term.</p>` : ""}
         </div>`).join("");
       return `
         <div class="card course-card c${c.color}">
           <div class="course-head"><span class="dot"></span><h3>${esc(c.code)}</h3>
             <span class="total ${c.assessments.length && total !== 100 ? "off" : ""}" data-total="${c.id}">${c.assessments.length ? `Total ${total}%` : ""}</span></div>
+          ${syllabusPanel(c)}
           ${rows || `<p class="empty">No deadlines yet.</p>`}
           <div class="add-row">
             ${["Assignment", "Quiz", "Lab", "Midterm", "Final exam", "Other"].map((t) => `<button type="button" class="btn small" data-act="add-assess" data-c="${c.id}" data-type="${t}">+ ${t}</button>`).join("")}
@@ -586,6 +727,17 @@
       case "add-commit": P.routine.commitments.push({ id: uid(), label: "", days: [], start: "", end: "" }); persist(); render(); break;
       case "del-commit": P.routine.commitments = P.routine.commitments.filter((m) => m.id !== d.id); persist(); render(); break;
       case "style": P.study.style = d.id; persist(); render(); break;
+      case "upload": startUpload(d.kind, d.c); break;
+      case "pick": {
+        const st = d.kind === "timetable" ? pending.timetable : pending.syllabus[d.c];
+        if (st.skip.has(d.k)) st.skip.delete(d.k); else st.skip.add(d.k);
+        render(); break;
+      }
+      case "apply-timetable": applyTimetable(); break;
+      case "apply-syllabus": applySyllabus(d.c); break;
+      case "discard":
+        if (d.kind === "timetable") pending.timetable = null; else delete pending.syllabus[d.c];
+        render(); break;
       case "reset": confirmingReset = true; render(); break;
       case "reset-no": confirmingReset = false; render(); break;
       case "reset-yes": confirmingReset = false; Store.clear(); P = Store.emptyProfile(); returnToReview = false; render(); break;
