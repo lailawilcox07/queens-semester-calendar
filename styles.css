@@ -14,7 +14,7 @@
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark){
-  :root{
+  html:not([data-mode="light"]){
     --bg:#1B1916; --surface:#242220; --ink:#EDE9E2; --muted:#A69E8F; --line:#3A362F;
     --accent:#7FB8A9; --accent-ink:#13201D; --accent-tint:#21332E;
     --warn:#E8B45C; --warn-tint:#3A2E1C; --error:#F0798A; --error-tint:#3D2224; --ok:#8FC79A; --ok-tint:#24352A;
@@ -29,6 +29,21 @@
     --fixed:#A69E8F; --fixedt:#2E2B27;
   }
 }
+html[data-mode="dark"]{ color-scheme:dark;
+    --bg:#1B1916; --surface:#242220; --ink:#EDE9E2; --muted:#A69E8F; --line:#3A362F;
+    --accent:#7FB8A9; --accent-ink:#13201D; --accent-tint:#21332E;
+    --warn:#E8B45C; --warn-tint:#3A2E1C; --error:#F0798A; --error-tint:#3D2224; --ok:#8FC79A; --ok-tint:#24352A;
+    --c1:#F5975C; --c1t:#3D2311;
+    --c2:#8FB8D9; --c2t:#22323F;
+    --c3:#8FC79A; --c3t:#24352A;
+    --c4:#C7A9CC; --c4t:#332B37;
+    --c5:#E0A855; --c5t:#3A2E1C;
+    --c6:#E8776A; --c6t:#3D2420;
+    --c7:#7FA5C9; --c7t:#1E2C3A;
+    --c8:#D99BAC; --c8t:#3A262B;
+    --fixed:#A69E8F; --fixedt:#2E2B27;
+}
+html[data-mode="light"]{ color-scheme:light; }
 .c1{--c:var(--c1); --ct:var(--c1t);} .c2{--c:var(--c2); --ct:var(--c2t);}
 .c3{--c:var(--c3); --ct:var(--c3t);} .c4{--c:var(--c4); --ct:var(--c4t);}
 .c5{--c:var(--c5); --ct:var(--c5t);} .c6{--c:var(--c6); --ct:var(--c6t);}
@@ -513,3 +528,32 @@ body:has(.timer-bar) .tabbar{top:auto; position:static;}
 .shared-meta{font-size:12.5px; color:var(--muted);}
 .share-box{border-top:1px solid var(--line); margin-top:10px; padding-top:10px;}
 .share-box > label:first-child{margin-bottom:6px;}
+
+/* ================= colour schemes =================
+   Classic is the default (above). Each scheme has a light and a dark version;
+   which one shows depends on the Light / Dark / Auto choice. */
+html[data-theme="queens"]{ --bg:#F6F5F1; --accent:#14325C; --accent-ink:#FFFFFF; --accent-tint:#E2E8F1; }
+html[data-theme="lake"]{ --bg:#F2F6F8; --line:#DCE3E8; --accent:#2B6A8F; --accent-ink:#FFFFFF; --accent-tint:#DDEBF3; }
+html[data-theme="blossom"]{ --bg:#FAF4F4; --line:#EBDFE0; --accent:#9A3E62; --accent-ink:#FFFFFF; --accent-tint:#F5E1E8; }
+html[data-theme="lavender"]{ --bg:#F7F5FA; --line:#E3DFEA; --accent:#5B4B9A; --accent-ink:#FFFFFF; --accent-tint:#E8E3F5; }
+@media (prefers-color-scheme: dark){
+  html[data-theme="queens"]:not([data-mode="light"]){ --bg:#15181E; --surface:#1D2129; --line:#2E3440; --accent:#9DB7E6; --accent-ink:#0E1A2E; --accent-tint:#1F2A3D; }
+  html[data-theme="lake"]:not([data-mode="light"]){ --bg:#141A1D; --surface:#1B2327; --line:#2B363C; --accent:#86C0E0; --accent-ink:#0D1F2A; --accent-tint:#1B2E38; }
+  html[data-theme="blossom"]:not([data-mode="light"]){ --bg:#1C1618; --surface:#251D20; --line:#3A2E32; --accent:#E7A3BF; --accent-ink:#2A1018; --accent-tint:#3A2229; }
+  html[data-theme="lavender"]:not([data-mode="light"]){ --bg:#15141B; --surface:#1D1B25; --line:#2F2C3A; --accent:#B4A6F0; --accent-ink:#17122E; --accent-tint:#26223D; }
+}
+html[data-theme="queens"][data-mode="dark"]{ --bg:#15181E; --surface:#1D2129; --line:#2E3440; --accent:#9DB7E6; --accent-ink:#0E1A2E; --accent-tint:#1F2A3D; }
+html[data-theme="lake"][data-mode="dark"]{ --bg:#141A1D; --surface:#1B2327; --line:#2B363C; --accent:#86C0E0; --accent-ink:#0D1F2A; --accent-tint:#1B2E38; }
+html[data-theme="blossom"][data-mode="dark"]{ --bg:#1C1618; --surface:#251D20; --line:#3A2E32; --accent:#E7A3BF; --accent-ink:#2A1018; --accent-tint:#3A2229; }
+html[data-theme="lavender"][data-mode="dark"]{ --bg:#15141B; --surface:#1D1B25; --line:#2F2C3A; --accent:#B4A6F0; --accent-ink:#17122E; --accent-tint:#26223D; }
+
+.modes{display:inline-flex; border:1px solid var(--line); border-radius:999px; overflow:hidden; margin:2px auto 0;}
+.mode-btn{font:inherit; font-size:12.5px; font-weight:600; padding:6px 14px; border:0; background:var(--surface); color:var(--muted); cursor:pointer;}
+.mode-btn + .mode-btn{border-left:1px solid var(--line);}
+.mode-btn.on{background:var(--accent); color:var(--accent-ink);}
+.mode-row{display:flex; justify-content:center;}
+.themes{display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin:8px 0;}
+.theme-btn{font:inherit; font-size:12.5px; font-weight:600; display:inline-flex; align-items:center; gap:7px; padding:6px 11px 6px 7px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--ink); cursor:pointer;}
+.theme-btn.on{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent);}
+.theme-sw{width:18px; height:18px; border-radius:50%; border:2px solid var(--surface); box-shadow:0 0 0 1px var(--line); flex:none;}
+.theme-label{font-size:12px; color:var(--muted); text-align:center; margin:16px 0 0;}

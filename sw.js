@@ -1,10 +1,10 @@
 // Service worker: lets the app open offline and makes it installable.
 // Pages and code are fetched fresh when online (so updates show up right
 // away) and served from the cache when offline.
-const CACHE = "semester-v5";
+const CACHE = "semester-v6";
 const SHELL = [
   "./", "index.html", "styles.css", "manifest.webmanifest",
-  "js/config.js", "js/terms.js", "js/store.js", "js/upload.js", "js/demo.js", "js/engine.js",
+  "js/theme.js", "js/config.js", "js/terms.js", "js/store.js", "js/upload.js", "js/demo.js", "js/engine.js",
   "js/reminders.js", "js/push.js", "js/app.js", "js/sync.js", "js/vendor/qrcode.js", "js/install.js", "js/shared.js", "js/setup.js",
   "icon-192.png", "icon-512.png", "apple-touch-icon.png", "assets/logo-128.png", "assets/favicon-64.png", "assets/qr-site.svg",
 ];

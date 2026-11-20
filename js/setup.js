@@ -175,6 +175,9 @@
     // Keep focus on the same control across re-renders (e.g. tabbing through grades).
     const a = document.activeElement;
     const focusKey = a && a.dataset && (a.dataset.a || a.dataset.bind) ? `[data-${a.dataset.a ? "a" : "bind"}="${a.dataset.a || a.dataset.bind}"][data-id="${a.dataset.id || ""}"]` : null;
+    // A colour scheme chosen on another device arrives with the synced profile.
+    if (P.prefs && ((Theme.valid(P.prefs.theme) && P.prefs.theme !== Theme.current()) || (Theme.validMode(P.prefs.mode) && P.prefs.mode !== Theme.mode())))
+      Theme.apply(Theme.valid(P.prefs.theme) ? P.prefs.theme : Theme.current(), Theme.validMode(P.prefs.mode) ? P.prefs.mode : Theme.mode());
     const acct = document.getElementById("account");
     if (acct) acct.innerHTML = Sync.chipHTML();
     if (P.setupComplete && P.step >= STEPS.length) app.innerHTML = Sync.panelHTML() + Install.cardHTML() + App.render(P) + renderFooter();
@@ -241,6 +244,7 @@
         <p class="muted small">You can skip anything and come back to it later.</p>
         <button type="button" class="btn primary big" data-act="next">${resuming ? "Continue setup" : "Get started"}</button>
         ${resuming ? "" : `<p><button type="button" class="link-btn" data-act="demo">Or try a demo with sample courses</button></p>`}
+        ${Theme.pickerHTML()}
         ${Sync.enabled() && !Sync.user() ? `<p class="small muted">Already set up on another device? <button type="button" class="link-btn" data-s="open">Sign in</button></p>` : ""}
       </section>`;
   }
@@ -927,6 +931,7 @@
 
   function renderFooter() {
     return `
+      ${Theme.pickerHTML()}
       <div class="reset">
         ${confirmingReset
           ? `<p>This deletes everything you've entered on this device.</p><button type="button" class="btn danger" data-act="reset-yes">Yes, start over</button> <button type="button" class="btn ghost" data-act="reset-no">Cancel</button>`
@@ -1230,7 +1235,17 @@
   App.init({ save: () => persist(), rerender: () => render(), profile: () => P });
 
   // Account sign-in and sync (only when a Supabase project is configured).
-  document.addEventListener("click", (e) => { Sync.handle(e); Install.handle(e); });
+  document.addEventListener("click", (e) => {
+    Sync.handle(e); Install.handle(e);
+    const t = e.target.closest("[data-theme-pick], [data-mode-pick]");
+    if (t) {
+      const theme = t.dataset.themePick || Theme.current(), mode = t.dataset.modePick || Theme.mode();
+      Theme.apply(theme, mode);
+      P.prefs = Object.assign({}, P.prefs, { theme, mode });
+      Store.saveNow(P);
+      render();
+    }
+  });
   Install.onChange = () => render();
   document.addEventListener("submit", (e) => { Sync.handle(e); });
   Sync.init({
