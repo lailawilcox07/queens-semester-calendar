@@ -430,3 +430,25 @@ body:has(.timer-bar) .tabbar{top:auto; position:static;}
 .ins-notes li{margin-bottom:4px;}
 .ag-item.st-past, .cg-block.st-past{opacity:.45;}
 .sw.missed{background:transparent; border:1.5px dashed var(--error);}
+
+/* predicted grades */
+.grades-intro{margin:0 0 12px;}
+.gbar-pred{background:repeating-linear-gradient(135deg, var(--c) 0 3px, transparent 3px 6px); opacity:.6;}
+.grade-head{display:grid; grid-template-columns:1fr 104px 104px; gap:8px; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:700; padding-bottom:4px;}
+.grade-head span{text-align:right; padding-right:18px;}
+.grade-items li{display:grid; grid-template-columns:1fr 104px 104px; gap:8px;}
+.grade-items .grade-in{justify-content:flex-end;}
+.grade-items .grade-in input{width:80px;}
+.grade-in.pred input{border-style:dashed; background:transparent;}
+.grade-in.pred input::placeholder{color:var(--c); opacity:.8;}
+.grade-items li.marked .gi-name{color:var(--ink);}
+@media (max-width:420px){ .grade-head, .grade-items li{grid-template-columns:1fr 88px 88px;} .grade-items .grade-in input{width:64px;} }
+
+/* forgot to time */
+.log-sub{font-weight:600; margin:12px 0 4px; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em;}
+.log-row{display:flex; flex-wrap:wrap; align-items:center; gap:8px 10px; padding:8px 0; border-top:1px solid var(--line);}
+.log-main{display:flex; flex-direction:column; flex:1 1 160px; font-size:14px;}
+.log-main b{color:var(--c);}
+.log-row select, .log-other select{width:auto;}
+.log-other{display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
+.log-other input[type="date"]{width:auto;}

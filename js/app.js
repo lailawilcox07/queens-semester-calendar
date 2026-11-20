@@ -27,7 +27,7 @@
 
   function progress(P) {
     P.progress = P.progress || {};
-    ["done", "started", "grades", "studyDone", "target", "locked"].forEach((k) => { P.progress[k] = P.progress[k] || {}; });
+    ["done", "started", "grades", "predicted", "studyDone", "target", "locked"].forEach((k) => { P.progress[k] = P.progress[k] || {}; });
     P.progress.sessions = P.progress.sessions || [];
     return P.progress;
   }
@@ -263,7 +263,48 @@
         <div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div>
         ${firstTomorrow ? `<p class="muted small">Tomorrow starts with <b>${esc(firstTomorrow.title)}</b> ${esc(itemSub(firstTomorrow))} at ${fmtTime(firstTomorrow.start)}.</p>` : ""}
       </div>
+      ${forgotCard(P, today)}
       ${insightsCard(P)}`;
+  }
+
+  // ---------- logging study done without the timer ----------
+  const DURATIONS = [15, 30, 45, 60, 75, 90, 105, 120, 150, 180, 240];
+  const durLabel = (m) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h${m % 60 ? " " + (m % 60) : ""}`);
+  function durationSelect(attrs, preferred) {
+    const pick = DURATIONS.reduce((a, b) => (Math.abs(b - preferred) < Math.abs(a - preferred) ? b : a));
+    return `<select ${attrs}>${DURATIONS.map((m) => `<option value="${m}" ${m === pick ? "selected" : ""}>${durLabel(m)}</option>`).join("")}</select>`;
+  }
+
+  function forgotCard(P, today) {
+    const pr = progress(P);
+    const since = pr.since || today;
+    const missed = [];
+    for (let k = 1; k <= 7; k++) {
+      const iso = E().addDays(today, -k);
+      if (iso < since) break;
+      eng.studyOn(iso).filter((b) => b.status === "missed").forEach((b) => missed.push({ b, iso }));
+    }
+    const minDate = since > eng.termStart ? eng.termStart : since;
+    const rows = missed.map(({ b, iso }) => {
+      const len = E().toMin(b.end) - E().toMin(b.start);
+      return `<div class="log-row c${b.course.color}">
+        <span class="log-main"><span><b>${esc(b.course.code)}</b> ${esc(dateLabel(iso))}</span><span class="todo-meta mono">planned ${fmtTime(b.start)}–${fmtTime(b.end)}</span></span>
+        ${durationSelect(`aria-label="How long you studied ${esc(b.course.code)} on ${esc(dateLabel(iso))}"`, len)}
+        <button type="button" class="btn small" data-a="log-block" data-id="${esc(b.id)}" data-c="${b.course.id}" data-date="${iso}">I did this</button>
+      </div>`;
+    }).join("");
+    return `<div class="card forgot">
+      <h3>Forgot to time it?</h3>
+      <p class="muted small">If you studied without the timer, log it here so your plan and time insights stay accurate.</p>
+      ${rows ? `<p class="small log-sub">Missed in the last week</p>${rows}` : ""}
+      <p class="small log-sub">Other study</p>
+      <div class="log-other">
+        <select id="logCourse" aria-label="Course">${P.courses.map((c) => `<option value="${c.id}">${esc(c.code)}</option>`).join("")}</select>
+        <input type="date" id="logDate" aria-label="Date" value="${today}" max="${today}" min="${minDate}">
+        ${durationSelect('id="logMin" aria-label="How long"', 60)}
+        <button type="button" class="btn small" data-a="log-other">Log it</button>
+      </div>
+    </div>`;
   }
 
   // ---------- study timer ----------
@@ -318,48 +359,66 @@
   }
 
   // ---------- Grades ----------
+  const hasVal = (v) => v !== undefined && v !== null && v !== "";
+
+  // Marks so far, the student's predictions for work not yet marked, and what's left.
   function courseGrade(c, pr) {
-    let earned = 0, gradedW = 0, totalW = 0;
+    let earned = 0, gradedW = 0, totalW = 0, predicted = 0, predictedW = 0;
     c.assessments.forEach((a) => {
       const w = Number(a.weight) || 0;
       totalW += w;
-      const g = pr.grades[a.id];
-      if (g !== undefined && g !== "" && w) { earned += (w * Number(g)) / 100; gradedW += w; }
+      if (!w) return;
+      if (hasVal(pr.grades[a.id])) { earned += (w * Number(pr.grades[a.id])) / 100; gradedW += w; }
+      else if (hasVal(pr.predicted[a.id])) { predicted += (w * Number(pr.predicted[a.id])) / 100; predictedW += w; }
     });
-    return { earned, gradedW, totalW, avg: gradedW ? (earned / gradedW) * 100 : null };
+    const openW = Math.max(0, totalW - gradedW - predictedW); // neither marked nor predicted
+    return { earned, gradedW, totalW, predicted, predictedW, openW, avg: gradedW ? (earned / gradedW) * 100 : null };
   }
 
   function gradesView(P) {
     const pr = progress(P);
     if (!P.courses.length) return `<p class="empty">Add courses in setup to track grades.</p>`;
     const targets = E().SCALE.filter(([min]) => min >= 50);
-    return P.courses.map((c) => {
+    return `<p class="muted small grades-intro">Enter marks as they come back. For work that isn't marked yet, type the mark you think you'll realistically get. The blank boxes show what you'd need on the rest to hit your goal.</p>` + P.courses.map((c) => {
       const g = courseGrade(c, pr);
       const target = Number(pr.target[c.id] || 80);
-      const remaining = Math.max(0, g.totalW - g.gradedW);
-      let need = "";
-      if (!g.totalW) need = "Add weights in setup to see what you need.";
-      else if (!remaining) need = `All graded. Final mark: <b>${round1(g.earned)}%</b> (${E().letter(g.earned)}).`;
-      else {
-        const req = ((target * g.totalW) / 100 - g.earned) / remaining * 100;
-        need = req <= 0 ? `You've already locked in ${E().letter(target)} or better.`
-          : req > 100 ? `${E().letter(target)} isn't reachable with the work left. You'd need ${round1(req)}% on the remaining ${round1(remaining)}%.`
-          : `You need an average of <b>${round1(req)}%</b> on the remaining ${round1(remaining)}% of the course.`;
+      const goalPts = (target * g.totalW) / 100;
+      const need = g.openW ? ((goalPts - g.earned - g.predicted) / g.openW) * 100 : null;
+      const projected = g.totalW ? ((g.earned + g.predicted) / g.totalW) * 100 : null;
+      let msg = "";
+      if (!g.totalW) msg = "Add weights in setup to see what you need.";
+      else if (!g.predictedW && !g.openW) msg = `All marked. Final mark: <b>${round1(projected)}%</b> (${E().letter(projected)}).`;
+      else if (g.openW) {
+        const base = g.predictedW ? "With your predictions, you need" : "You need";
+        msg = need <= 0 ? `${g.predictedW ? "With your predictions, you've" : "You've"} already locked in ${E().letter(target)} or better.`
+          : need > 100 ? `${E().letter(target)} isn't reachable${g.predictedW ? " with these predictions" : ""}. You'd need ${round1(need)}% on the remaining ${round1(g.openW)}%.${g.predictedW ? " Try raising a prediction you think you can beat." : ""}`
+          : `${base} an average of <b>${round1(need)}%</b> on the remaining ${round1(g.openW)}% of the course.`;
+      } else {
+        // Everything is marked or predicted: show where the predictions land.
+        const gap = target - projected;
+        msg = gap <= 0 ? `Your predictions put you at <b>${round1(projected)}%</b> (${E().letter(projected)}). That reaches ${E().letter(target)}.`
+          : `Your predictions put you at <b>${round1(projected)}%</b> (${E().letter(projected)}), ${round1(gap)}% short of ${E().letter(target)}. You'd need about ${round1(gap * g.totalW / Math.max(1, g.predictedW))}% more on each predicted item.`;
       }
       const lost = g.gradedW - g.earned;
+      const pct = (x) => (g.totalW ? (x / g.totalW) * 100 : 0);
+      const needHint = need != null && need > 0 && need <= 100 ? Math.ceil(need) : "";
       return `<div class="card grade-card c${c.color}">
         <div class="course-head"><span class="dot"></span><h3>${esc(c.code)}</h3>${c.name ? `<span class="muted small">${esc(c.name)}</span>` : ""}
-          <span class="grade-now">${g.avg == null ? `<span class="muted small">No grades yet</span>` : `<b>${round1(g.avg)}%</b> <span class="letter">${E().letter(g.avg)}</span>`}</span></div>
-        <div class="gbar" aria-label="${round1(g.earned)}% earned, ${round1(lost)}% lost, ${round1(remaining)}% still to come">
-          <div class="gbar-earned" style="width:${g.totalW ? (g.earned / g.totalW) * 100 : 0}%"></div><div class="gbar-lost" style="width:${g.totalW ? (lost / g.totalW) * 100 : 0}%"></div>
+          <span class="grade-now">${g.avg == null ? `<span class="muted small">No marks yet</span>` : `<b>${round1(g.avg)}%</b> <span class="letter">${E().letter(g.avg)}</span>`}</span></div>
+        <div class="gbar" aria-label="${round1(g.earned)}% earned, ${round1(lost)}% lost, ${round1(g.predicted)}% predicted, ${round1(g.openW)}% still open">
+          <div class="gbar-earned" style="width:${pct(g.earned)}%"></div><div class="gbar-lost" style="width:${pct(lost)}%"></div><div class="gbar-pred" style="width:${pct(g.predicted)}%"></div>
         </div>
-        <p class="muted small">${round1(g.gradedW)}% of the course graded · ${round1(g.earned)}% earned so far</p>
+        <p class="muted small">${round1(g.gradedW)}% marked · ${round1(g.earned)}% earned${g.predictedW ? ` · ${round1(g.predictedW)}% predicted` : ""}</p>
         <div class="target-row"><label class="inline">Aiming for
           <select data-a="target" data-id="${c.id}">${targets.map(([min, l]) => `<option value="${min}" ${min === target ? "selected" : ""}>${l} (${min}%+)</option>`).join("")}</select></label></div>
-        <p class="need">${need}</p>
-        <ul class="grade-items">${c.assessments.map((a) => `
-          <li><span>${esc(a.name || a.type)}<span class="muted small"> · ${a.weight !== "" && a.weight != null ? esc(a.weight) + "%" : "no weight"}</span></span>
-            <label class="grade-in"><input type="number" inputmode="decimal" min="0" max="150" step="0.1" placeholder="—" aria-label="Your mark on ${esc(a.name)} in percent" value="${pr.grades[a.id] ?? ""}" data-a="grade" data-id="${a.id}"><span>%</span></label></li>`).join("")}
+        <p class="need">${msg}</p>
+        <div class="grade-head"><span></span><span>Predicted</span><span>Actual</span></div>
+        <ul class="grade-items">${c.assessments.map((a) => {
+          const marked = hasVal(pr.grades[a.id]);
+          return `<li class="${marked ? "marked" : ""}"><span class="gi-name">${esc(a.name || a.type)}<span class="muted small"> · ${a.weight !== "" && a.weight != null ? esc(a.weight) + "%" : "no weight"}</span></span>
+            <label class="grade-in pred">${marked ? `<span class="muted small">${hasVal(pr.predicted[a.id]) ? esc(pr.predicted[a.id]) + "%" : ""}</span>` : `<input type="number" inputmode="decimal" min="0" max="150" step="1" placeholder="${needHint}" aria-label="Predicted mark on ${esc(a.name)}${needHint ? `, you need about ${needHint}%` : ""}" value="${pr.predicted[a.id] ?? ""}" data-a="predict" data-id="${a.id}"><span>%</span>`}</label>
+            <label class="grade-in"><input type="number" inputmode="decimal" min="0" max="150" step="0.1" placeholder="—" aria-label="Your actual mark on ${esc(a.name)} in percent" value="${pr.grades[a.id] ?? ""}" data-a="grade" data-id="${a.id}"><span>%</span></label></li>`;
+        }).join("")}
         </ul>
       </div>`;
     }).join("") + `<p class="muted small">Letter grades use the Queen's grading scale. Your syllabus decides how marks are combined, so check it for drop-the-lowest rules or alternative grading schemes.</p>`;
@@ -425,6 +484,18 @@
           pr.timer = { courseId: sel.value, blockId: null, label: "Extra study", start: Date.now(), elapsed: 0 };
           ctx.save(); break;
         }
+        case "log-block": {
+          const minutes = Number(el.closest(".log-row").querySelector("select").value);
+          pr.sessions.push({ id: Math.random().toString(36).slice(2, 9), courseId: d.c, blockId: d.id, date: d.date, minutes, manual: true });
+          pr.studyDone[d.id] = true;
+          ctx.save(); break;
+        }
+        case "log-other": {
+          const date = document.getElementById("logDate").value, minutes = Number(document.getElementById("logMin").value);
+          if (!date || date > E().localToday()) break;
+          pr.sessions.push({ id: Math.random().toString(36).slice(2, 9), courseId: document.getElementById("logCourse").value, blockId: null, date, minutes, manual: true });
+          ctx.save(); break;
+        }
         case "t-pause": if (pr.timer && pr.timer.start) { pr.timer.elapsed += Date.now() - pr.timer.start; pr.timer.start = null; } ctx.save(); break;
         case "t-resume": if (pr.timer && !pr.timer.start) pr.timer.start = Date.now(); ctx.save(); break;
         case "t-cancel": delete pr.timer; ctx.save(); break;
@@ -445,9 +516,10 @@
       return true;
     }
     if (e.type === "change" && d.a === "target") { pr.target[d.id] = Number(el.value); ctx.save(); ctx.rerender(); return true; }
-    if (e.type === "change" && d.a === "grade") {
+    if (e.type === "change" && (d.a === "grade" || d.a === "predict")) {
+      const store = d.a === "grade" ? pr.grades : pr.predicted;
       const v = el.value.trim();
-      if (v === "") delete pr.grades[d.id]; else pr.grades[d.id] = Math.max(0, Math.min(150, Number(v)));
+      if (v === "") delete store[d.id]; else store[d.id] = Math.max(0, Math.min(150, Number(v)));
       // Wait for focus to move (e.g. Tab to the next mark) so it's kept after re-rendering.
       ctx.save(); setTimeout(ctx.rerender, 0); return true;
     }
