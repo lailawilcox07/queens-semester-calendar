@@ -1,6 +1,6 @@
 # Backend setup (Supabase + Claude API)
 
-This turns on "Upload syllabus" and "Upload timetable screenshot" in setup. It takes about 15 minutes, and you only do it once.
+This turns on "Upload syllabus", "Upload timetable screenshot" and automatic course names in setup. It takes about 15 minutes, and you only do it once.
 
 ## 1. Get a Claude API key
 
@@ -26,6 +26,7 @@ npx supabase login
 npx supabase link --project-ref YOUR_PROJECT_ID
 npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 npx supabase functions deploy extract
+npx supabase functions deploy course-lookup
 ```
 
 Optional settings, with `npx supabase secrets set NAME=value`:

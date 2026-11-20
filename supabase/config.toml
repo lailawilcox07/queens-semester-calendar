@@ -2,3 +2,6 @@
 # which the function checks itself, so the platform JWT check is turned off.
 [functions.extract]
 verify_jwt = false
+
+[functions.course-lookup]
+verify_jwt = false

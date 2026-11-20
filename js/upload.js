@@ -73,5 +73,20 @@
     return body.result;
   }
 
-  root.Uploader = { prepare, send, enabled };
+  // Course title from the Queen's Academic Calendar, or null if not found.
+  const lookups = {};
+  function lookupCourse(code) {
+    if (!enabled()) return Promise.resolve(null);
+    if (!lookups[code]) {
+      const c = cfg();
+      lookups[code] = fetch(c.supabaseUrl.replace(/\/$/, "") + "/functions/v1/course-lookup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: c.supabaseKey },
+        body: JSON.stringify({ code }),
+      }).then((r) => r.json()).then((b) => (b && b.ok ? b.name : null)).catch(() => { delete lookups[code]; return null; });
+    }
+    return lookups[code];
+  }
+
+  root.Uploader = { prepare, send, enabled, lookupCourse };
 })(window);

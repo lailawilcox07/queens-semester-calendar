@@ -58,52 +58,61 @@
   function persist() { Store.save(P); }
 
   // ---------- derived checks ----------
+  // Classes and weekly commitments are stored as "slots": one day + start + end
+  // each, so the same lecture can run at different times on different days.
+  const validSlot = (sl) => sl.start && sl.end && toMin(sl.end) > toMin(sl.start);
+  const DAY_OF_DATE = (iso) => { const [y, m, d] = iso.split("-").map(Number); return DAYS[(new Date(y, m - 1, d).getDay() + 6) % 7]; };
+
   function classHoursPerWeek() {
     let mins = 0;
-    P.courses.forEach((c) => c.meetings.forEach((m) => {
-      const a = toMin(m.start), b = toMin(m.end);
-      if (a != null && b != null && b > a) mins += (b - a) * m.days.length;
-    }));
+    P.courses.forEach((c) => c.meetings.forEach((m) => m.slots.forEach((sl) => {
+      if (validSlot(sl)) mins += toMin(sl.end) - toMin(sl.start);
+    })));
     return Math.round((mins / 60) * 10) / 10;
   }
 
-  // Every timed block in the week, for conflict checks and the preview grid.
+  // Every timed block in a normal week, for conflict checks and the preview.
   function weekBlocks() {
     const out = [];
-    P.courses.forEach((c) => c.meetings.forEach((m) => m.days.forEach((d) => {
-      if (m.start && m.end) out.push({ day: d, start: m.start, end: m.end, label: c.code + " " + m.type, title: c.code, type: m.type, sub: m.location, color: c.color, kind: "class", ref: m.id });
+    P.courses.forEach((c) => c.meetings.forEach((m) => m.slots.forEach((sl) => {
+      if (validSlot(sl)) out.push({ day: sl.day, start: sl.start, end: sl.end, label: c.code + " " + m.type, title: c.code, type: m.type, sub: m.location, color: c.color, kind: "class", ref: sl.id });
     })));
-    P.routine.commitments.forEach((m) => m.days.forEach((d) => {
-      if (m.start && m.end) out.push({ day: d, start: m.start, end: m.end, label: m.label || "Commitment", title: m.label || "Commitment", type: "", sub: "", color: 0, kind: "fixed", ref: m.id });
+    P.routine.commitments.forEach((m) => m.slots.forEach((sl) => {
+      if (validSlot(sl)) out.push({ day: sl.day, start: sl.start, end: sl.end, label: m.label || "Commitment", title: m.label || "Commitment", type: "", sub: m.commute ? `${m.commute} min travel each way` : "", color: 0, kind: "fixed", ref: sl.id });
     }));
     return out;
   }
 
+  const overlaps = (a, b) => toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end);
+
   function conflicts() {
     const blocks = weekBlocks();
     const found = [];
-    const seen = new Set();
     for (let i = 0; i < blocks.length; i++) for (let j = i + 1; j < blocks.length; j++) {
       const a = blocks[i], b = blocks[j];
-      if (a.day !== b.day) continue;
-      if (toMin(a.start) < toMin(b.end) && toMin(b.start) < toMin(a.end)) {
-        const key = [a.ref, b.ref, a.day].sort().join("|");
-        if (seen.has(key)) continue;
-        seen.add(key);
-        found.push({ day: a.day, a, b, refs: [a.ref, b.ref] });
-      }
+      if (a.day === b.day && overlaps(a, b)) found.push({ day: a.day, a, b, refs: [a.ref, b.ref] });
     }
     return found;
   }
 
+  // One-off events that land on top of a weekly class or commitment.
+  function oneoffClashes() {
+    const blocks = weekBlocks();
+    const out = [];
+    P.routine.oneoffs.forEach((o) => {
+      if (!o.date || !validSlot(o)) return;
+      const day = DAY_OF_DATE(o.date);
+      blocks.filter((b) => b.day === day && overlaps(b, o)).forEach((b) => out.push({ o, b }));
+    });
+    return out;
+  }
+
   function badTimes() {
     const bad = [];
-    P.courses.forEach((c) => c.meetings.forEach((m) => {
-      if (m.start && m.end && toMin(m.end) <= toMin(m.start)) bad.push(m.id);
-    }));
-    P.routine.commitments.forEach((m) => {
-      if (m.start && m.end && toMin(m.end) <= toMin(m.start)) bad.push(m.id);
-    });
+    const check = (sl) => { if (sl.start && sl.end && toMin(sl.end) <= toMin(sl.start)) bad.push(sl.id); };
+    P.courses.forEach((c) => c.meetings.forEach((m) => m.slots.forEach(check)));
+    P.routine.commitments.forEach((m) => m.slots.forEach(check));
+    P.routine.oneoffs.forEach(check);
     return bad;
   }
 
@@ -120,6 +129,7 @@
     const w = [];
     conflicts().forEach((x) => w.push(`${x.day}: ${x.a.label} (${fmtTime(x.a.start)}–${fmtTime(x.a.end)}) overlaps ${x.b.label} (${fmtTime(x.b.start)}–${fmtTime(x.b.end)}).`));
     if (badTimes().length) w.push("Some times end before they start.");
+    oneoffClashes().forEach(({ o, b }) => w.push(`${o.label || "One-off event"} on ${fmtDate(o.date)} overlaps ${b.label} (${fmtTime(b.start)}–${fmtTime(b.end)}).`));
     P.courses.forEach((c) => {
       if (!c.meetings.length) w.push(`${c.code} has no class times yet.`);
       if (!c.assessments.length) w.push(`${c.code} has no deadlines yet.`);
@@ -198,18 +208,26 @@
           <li><b>Your deadlines</b>: from each syllabus, with grade weights</li>
           <li><b>Your routine</b>: commute, work, practice and study goals</li>
         </ol>
+        <div class="card ready">
+          <h3>Before you start, grab these</h3>
+          <ol>
+            <li><b>Your class schedule from MySOLUS.</b> ${Uploader.enabled() ? "Take a screenshot of your weekly schedule. You can upload it and we'll fill in your classes." : "You'll copy your class times from it."}</li>
+            <li><b>The syllabus for each course from onQ.</b> ${Uploader.enabled() ? "Download each one as a PDF. You can upload them and we'll fill in your deadlines and weights." : "You'll copy the deadlines and weights from them."}</li>
+          </ol>
+          <p class="muted small">Setup is easiest on a laptop.</p>
+        </div>
         <p class="privacy"><b>Private by default.</b> No account needed. Everything you enter stays on this device.${Uploader.enabled() ? " If you upload a syllabus or timetable, it's sent to Claude, Anthropic's AI, to read it. This site doesn't keep a copy." : ""}</p>
-        <p class="muted small">Have your syllabi handy. You can skip anything and come back to it later.</p>
+        <p class="muted small">You can skip anything and come back to it later.</p>
         <button type="button" class="btn primary big" data-act="next">${resuming ? "Continue setup" : "Get started"}</button>
       </section>`;
   }
 
   function stepTerm() {
     const t = P.term;
-    const presets = TERM_PRESETS.map((p) => `
+    const presets = Terms.upcomingTerms().map((p) => `
       <button type="button" class="choice ${t.presetId === p.id ? "on" : ""}" data-act="preset" data-id="${p.id}" aria-pressed="${t.presetId === p.id}">
         <span class="choice-title">${esc(p.label)}</span>
-        <span class="choice-sub">Classes ${esc(fmtDate(p.classesStart))} – ${esc(fmtDate(p.classesEnd))}</span>
+        <span class="choice-sub">${p.known ? `Classes ${esc(fmtDate(p.classesStart))} – ${esc(fmtDate(p.classesEnd))}` : "Dates not published yet. You'll enter them."}</span>
       </button>`).join("");
     const breaks = t.breaks.map((b, i) => `
       <div class="row break-row">
@@ -220,7 +238,7 @@
       </div>`).join("");
     return `
       <h2 tabindex="-1">Which term are you planning?</h2>
-      <p class="muted">Dates come from the Queen's Arts and Science sessional dates. If your faculty's dates are different, edit them below.</p>
+      <p class="muted">Dates come from the Queen's Arts and Science sessional dates, including reading week and holidays. If your faculty's dates are different, edit them below.</p>
       <div class="choices">${presets}
         <button type="button" class="choice ${t.presetId === "custom" ? "on" : ""}" data-act="preset" data-id="custom" aria-pressed="${t.presetId === "custom"}">
           <span class="choice-title">Other term</span><span class="choice-sub">Enter the dates yourself</span>
@@ -246,12 +264,12 @@
     const list = P.courses.map((c) => `
       <li class="course-chip c${c.color}">
         <span class="dot"></span>
-        <span class="chip-text"><b>${esc(c.code)}</b>${c.name ? `<span class="muted"> · ${esc(c.name)}</span>` : ""}</span>
+        <span class="chip-text"><b>${esc(c.code)}</b><input class="chip-name" type="text" placeholder="Course name" aria-label="${esc(c.code)} name" maxlength="80" value="${esc(c.name)}" data-bind="course" data-id="${c.id}" data-f="name"></span>
         <button type="button" class="icon-btn" data-act="del-course" data-id="${c.id}" aria-label="Remove ${esc(c.code)}">×</button>
       </li>`).join("");
     return `
       <h2 tabindex="-1">What courses are you taking?</h2>
-      <p class="muted">Add each course code, like <span class="mono">MATH 121</span> or <span class="mono">PSYC 100</span>. The name is optional.</p>
+      <p class="muted">Add each course code, like <span class="mono">MATH 121</span> or <span class="mono">PSYC 100</span>.${Uploader.enabled() ? " We'll fill in the course name from the Queen's Academic Calendar, and you can change it." : " The name is optional."}</p>
       ${timetablePanel()}
       <form class="card add-course" data-form="course" autocomplete="off">
         <div class="grid2">
@@ -264,15 +282,51 @@
       ${P.courses.length ? `<ul class="course-list">${list}</ul>` : `<p class="empty">No courses yet.</p>`}`;
   }
 
-  function dayToggles(scope, id, days) {
+  // Day buttons. Turning a day on adds its own time row, copied from the last one.
+  function dayToggles(scope, id, slots) {
+    const on = new Set(slots.map((sl) => sl.day));
     return `<div class="days" role="group" aria-label="Days">${DAYS.map((d) => `
-      <button type="button" class="day ${days.includes(d) ? "on" : ""}" data-act="toggle-day" data-scope="${scope}" data-id="${id}" data-day="${d}" aria-pressed="${days.includes(d)}" aria-label="${d}">${DAY_SHORT[d]}</button>`).join("")}</div>`;
+      <button type="button" class="day ${on.has(d) ? "on" : ""}" data-act="toggle-day" data-scope="${scope}" data-id="${id}" data-day="${d}" aria-pressed="${on.has(d)}" aria-label="${d}">${DAY_SHORT[d]}</button>`).join("")}</div>`;
+  }
+
+  // Hour + minute dropdowns instead of the browser's time box, which shows
+  // seconds on some phones. Minutes go in 5s; classes start on :00 or :30.
+  const HOURS = Array.from({ length: 18 }, (_, i) => i + 6); // 6am to 11pm
+  const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
+  function timePicker(attrs, value, label) {
+    const [h, m] = value ? value.split(":").map(Number) : [null, null];
+    const hourLabel = (x) => (x % 12 || 12) + (x < 12 ? " am" : " pm");
+    return `<span class="tp" role="group" aria-label="${esc(label)}">
+      <select aria-label="${esc(label)} hour" ${attrs} data-part="h">
+        <option value="" ${h == null ? "selected" : ""}>--</option>
+        ${HOURS.map((x) => `<option value="${x}" ${x === h ? "selected" : ""}>${hourLabel(x)}</option>`).join("")}
+      </select><span class="tp-colon">:</span><select aria-label="${esc(label)} minutes" ${attrs} data-part="m">
+        <option value="" ${m == null ? "selected" : ""}>--</option>
+        ${MINUTES.map((x) => `<option value="${x}" ${x === m ? "selected" : ""}>${String(x).padStart(2, "0")}</option>`).join("")}
+      </select></span>`;
+  }
+
+  function slotRows(scope, parentId, slots, bad, clashIds, extra) {
+    if (!slots.length) return `<p class="hint">Tap the days it happens.</p>`;
+    return `<div class="slots">${slots.map((sl) => {
+      const a = `data-bind="slot" data-scope="${scope}" data-id="${parentId}" data-s="${sl.id}"${extra || ""}`;
+      return `<div class="slot ${bad.has(sl.id) ? "error" : ""} ${clashIds.has(sl.id) ? "warn" : ""}">
+        <span class="slot-day">${sl.day}</span>
+        ${timePicker(a + ' data-f="start"', sl.start, sl.day + " start")}
+        <span class="slot-to">to</span>
+        ${timePicker(a + ' data-f="end"', sl.end, sl.day + " end")}
+        ${bad.has(sl.id) ? `<span class="field-error slot-err">Ends before it starts</span>` : ""}
+      </div>`;
+    }).join("")}</div>`;
   }
 
   // ---------- upload to autofill ----------
   const spinner = (text) => `<div class="upload-status" role="status"><span class="spinner" aria-hidden="true"></span>${esc(text)}</div>`;
   const warnList = (w) => w && w.length ? `<div class="alert warn"><b>Double-check</b><ul>${w.map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>` : "";
-  const sameMeeting = (a, b) => a.type === b.type && a.start === b.start && a.end === b.end && a.days.join() === b.days.join();
+  // Uploaded meetings come back as days + one time; stored meetings are slots.
+  const slotSig = (slots) => slots.map((sl) => sl.day + sl.start + sl.end).sort().join("|");
+  const toSlots = (m) => m.days.map((day) => ({ id: uid(), day, start: m.start, end: m.end }));
+  const sameMeeting = (stored, up) => stored.type === up.type && slotSig(stored.slots) === slotSig(toSlots(up));
 
   function timetablePanel() {
     if (!Uploader.enabled()) return "";
@@ -384,12 +438,13 @@
         P.courses.push(target);
       }
       picked.forEach((m) => {
-        if (!target.meetings.some((em) => sameMeeting(em, m))) target.meetings.push({ id: uid(), type: m.type, days: m.days.slice(), start: m.start, end: m.end, location: m.location || "" });
+        if (!target.meetings.some((em) => sameMeeting(em, m))) target.meetings.push({ id: uid(), type: m.type, slots: toSlots(m), location: m.location || "" });
       });
     });
     pending.timetable = null;
     persist();
     render();
+    P.courses.forEach((c) => { if (!c.name) fillName(c); });
   }
 
   function applySyllabus(courseId) {
@@ -406,24 +461,20 @@
 
   function stepClasses() {
     const conf = conflicts();
-    const conflictIds = new Set(conf.flatMap((x) => x.refs));
+    const clashIds = new Set(conf.flatMap((x) => x.refs));
     const bad = new Set(badTimes());
     const cards = P.courses.map((c) => {
       const rows = c.meetings.map((m) => `
-        <div class="meeting ${conflictIds.has(m.id) ? "warn" : ""} ${bad.has(m.id) ? "error" : ""}">
+        <div class="meeting">
           <div class="meeting-top">
             <select aria-label="Class type" data-bind="meeting" data-c="${c.id}" data-id="${m.id}" data-f="type">
               ${MEETING_TYPES.map((t) => `<option ${m.type === t ? "selected" : ""}>${t}</option>`).join("")}
             </select>
+            <input type="text" class="grow" placeholder="Room (optional)" aria-label="Room" value="${esc(m.location)}" data-bind="meeting" data-c="${c.id}" data-id="${m.id}" data-f="location">
             <button type="button" class="icon-btn" data-act="del-meeting" data-c="${c.id}" data-id="${m.id}" aria-label="Remove this ${esc(m.type)}">×</button>
           </div>
-          ${dayToggles("meeting", m.id, m.days)}
-          <div class="meeting-bottom">
-            <label class="inline">From<input type="time" value="${esc(m.start)}" data-bind="meeting" data-c="${c.id}" data-id="${m.id}" data-f="start"></label>
-            <label class="inline">to<input type="time" value="${esc(m.end)}" data-bind="meeting" data-c="${c.id}" data-id="${m.id}" data-f="end"></label>
-            <input type="text" class="grow" placeholder="Room (optional)" aria-label="Room" value="${esc(m.location)}" data-bind="meeting" data-c="${c.id}" data-id="${m.id}" data-f="location">
-          </div>
-          ${bad.has(m.id) ? `<p class="field-error">The end time is before the start time.</p>` : ""}
+          ${dayToggles("meeting", m.id, m.slots)}
+          ${slotRows("meeting", m.id, m.slots, bad, clashIds, ` data-c="${c.id}"`)}
         </div>`).join("");
       return `
         <div class="card course-card c${c.color}">
@@ -436,7 +487,7 @@
     }).join("");
     return `
       <h2 tabindex="-1">When are your classes?</h2>
-      <p class="muted">Add each lecture, tutorial and lab, and tap the days it meets. You can find these on SOLUS or your Qflow timetable.</p>
+      <p class="muted">Add each lecture, tutorial and lab, tap the days it meets, then set the time for each day. Your MySOLUS class schedule has all of this.</p>
       ${timetablePanel()}
       ${conf.length ? `<div class="alert warn" role="status"><b>Time clash:</b> ${conf.map((x) => `${x.day} ${esc(x.a.label)} and ${esc(x.b.label)}`).join("; ")}.</div>` : ""}
       ${cards}`;
@@ -475,37 +526,62 @@
       ${cards}`;
   }
 
+  function commuteField(bind, id, value) {
+    return `<label class="inline commute">Travel each way<span class="with-unit"><input type="number" min="0" max="180" step="5" inputmode="numeric" placeholder="0" value="${esc(value)}" data-bind="${bind}" data-id="${id}" data-f="commute"><span>min</span></span></label>`;
+  }
+
   function stepRoutine() {
     const r = P.routine;
     const bad = new Set(badTimes());
-    const rows = r.commitments.map((m) => `
-      <div class="meeting ${bad.has(m.id) ? "error" : ""}">
+    const clashIds = new Set(conflicts().flatMap((x) => x.refs));
+    const oneClash = new Set(oneoffClashes().map((x) => x.o.id));
+    const weekly = r.commitments.map((m) => `
+      <div class="meeting">
         <div class="meeting-top">
           <input type="text" class="grow" placeholder="e.g. Work shift, Volleyball" aria-label="What is it?" value="${esc(m.label)}" data-bind="commit" data-id="${m.id}" data-f="label">
           <button type="button" class="icon-btn" data-act="del-commit" data-id="${m.id}" aria-label="Remove ${esc(m.label || "commitment")}">×</button>
         </div>
-        ${dayToggles("commit", m.id, m.days)}
-        <div class="meeting-bottom">
-          <label class="inline">From<input type="time" value="${esc(m.start)}" data-bind="commit" data-id="${m.id}" data-f="start"></label>
-          <label class="inline">to<input type="time" value="${esc(m.end)}" data-bind="commit" data-id="${m.id}" data-f="end"></label>
+        ${commuteField("commit", m.id, m.commute)}
+        ${dayToggles("commit", m.id, m.slots)}
+        ${slotRows("commit", m.id, m.slots, bad, clashIds, "")}
+      </div>`).join("");
+    const once = r.oneoffs.slice().sort((a, b) => (a.date || "9").localeCompare(b.date || "9")).map((o) => `
+      <div class="meeting ${oneClash.has(o.id) ? "warn" : ""}">
+        <div class="meeting-top">
+          <input type="text" class="grow" placeholder="e.g. Dentist, Job interview" aria-label="What is it?" value="${esc(o.label)}" data-bind="oneoff" data-id="${o.id}" data-f="label">
+          <button type="button" class="icon-btn" data-act="del-oneoff" data-id="${o.id}" aria-label="Remove ${esc(o.label || "event")}">×</button>
         </div>
-        ${bad.has(m.id) ? `<p class="field-error">The end time is before the start time.</p>` : ""}
+        <div class="slot ${bad.has(o.id) ? "error" : ""}">
+          <input type="date" class="slot-date" aria-label="Date" value="${esc(o.date)}" data-bind="oneoff" data-id="${o.id}" data-f="date">
+          ${timePicker(`data-bind="oneoff" data-id="${o.id}" data-f="start"`, o.start, "Start")}
+          <span class="slot-to">to</span>
+          ${timePicker(`data-bind="oneoff" data-id="${o.id}" data-f="end"`, o.end, "End")}
+          ${bad.has(o.id) ? `<span class="field-error slot-err">Ends before it starts</span>` : ""}
+        </div>
+        ${commuteField("oneoff", o.id, o.commute)}
+        ${oneClash.has(o.id) ? `<p class="hint warn-text">This overlaps one of your weekly classes or commitments.</p>` : ""}
       </div>`).join("");
     return `
       <h2 tabindex="-1">What does a normal week look like?</h2>
       <p class="muted">This helps fit study time around everything else in your week.</p>
       <div class="card">
         <div class="grid3">
-          <label>Usually up by<input type="time" value="${esc(r.wake)}" data-bind="routine" data-f="wake"></label>
-          <label>Usually in bed by<input type="time" value="${esc(r.bed)}" data-bind="routine" data-f="bed"></label>
+          <label>Usually up by${timePicker('data-bind="routine" data-f="wake"', r.wake, "Wake-up time")}</label>
+          <label>Usually in bed by${timePicker('data-bind="routine" data-f="bed"', r.bed, "Bedtime")}</label>
           <label>Commute to campus<span class="with-unit"><input type="number" min="0" max="180" step="5" inputmode="numeric" value="${esc(r.commute)}" data-bind="routine" data-f="commute"><span>min</span></span></label>
         </div>
       </div>
       <div class="card">
-        <h3>Regular commitments</h3>
-        <p class="muted small">Work, sports, clubs, appointments: anything that happens at the same time every week.</p>
-        ${rows || `<p class="empty">Nothing added.</p>`}
-        <button type="button" class="btn small" data-act="add-commit">+ Add a commitment</button>
+        <h3>Every week</h3>
+        <p class="muted small">Work, sports, clubs, appointments: anything that repeats each week.</p>
+        ${weekly || `<p class="empty">Nothing added.</p>`}
+        <button type="button" class="btn small" data-act="add-commit">+ Add a weekly commitment</button>
+      </div>
+      <div class="card">
+        <h3>One-time events</h3>
+        <p class="muted small">Appointments, trips or events on a specific day. Study time will be planned around them.</p>
+        ${once || `<p class="empty">Nothing added.</p>`}
+        <button type="button" class="btn small" data-act="add-oneoff">+ Add a one-time event</button>
       </div>`;
   }
 
@@ -611,7 +687,7 @@
           <ul class="mini-courses">${P.courses.map((c) => `<li class="c${c.color}"><span class="dot"></span>${esc(c.code)}</li>`).join("")}</ul>
           <p class="muted small">${classHoursPerWeek()} h of class a week</p></div>
         <div class="card sum"><div class="sum-head"><h3>Routine</h3>${edit(5)}</div>
-          <p class="muted small">Up by ${fmtTime(P.routine.wake)}, bed by ${fmtTime(P.routine.bed)}<br>${esc(P.routine.commute)} min commute<br>${P.routine.commitments.length} regular commitment${P.routine.commitments.length === 1 ? "" : "s"}</p></div>
+          <p class="muted small">Up by ${fmtTime(P.routine.wake)}, bed by ${fmtTime(P.routine.bed)}<br>${esc(P.routine.commute)} min commute<br>${P.routine.commitments.length} weekly commitment${P.routine.commitments.length === 1 ? "" : "s"}${P.routine.oneoffs.length ? `<br>${P.routine.oneoffs.length} one-time event${P.routine.oneoffs.length === 1 ? "" : "s"}` : ""}</p></div>
         <div class="card sum"><div class="sum-head"><h3>Study plan</h3>${edit(6)}</div>
           <p class="muted small">${P.study.style === "focus" ? "One course a day" : "A bit of everything"}<br>${esc(P.study.weeklyHours)} h/week goal<br>${nDue} deadline${nDue === 1 ? "" : "s"} tracked</p></div>
       </div>`;
@@ -651,6 +727,12 @@
     render();
   }
 
+  // Fill in a course's title from the Queen's Academic Calendar. It stays editable.
+  async function fillName(c) {
+    const name = await Uploader.lookupCourse(c.code);
+    if (name && !c.name && P.courses.includes(c)) { c.name = name; persist(); render(); }
+  }
+
   function addCourse(form) {
     const code = normCode(form.code.value);
     const err = document.getElementById("codeError");
@@ -658,9 +740,11 @@
     if (!isCode(code)) msg = "Enter a course code like MATH 121.";
     else if (P.courses.some((c) => c.code === code)) msg = code + " is already added.";
     if (msg) { err.textContent = msg; err.hidden = false; form.code.focus(); return; }
-    P.courses.push({ id: uid(), code, name: form.name.value.trim(), color: nextColor(), meetings: [], assessments: [] });
+    const c = { id: uid(), code, name: form.name.value.trim(), color: nextColor(), meetings: [], assessments: [] };
+    P.courses.push(c);
     persist();
     render();
+    if (!c.name) fillName(c);
     const input = document.getElementById("newCode");
     if (input) input.focus();
   }
@@ -698,7 +782,7 @@
         if (d.id === "custom") {
           P.term = Object.assign({}, P.term, { presetId: "custom", label: P.term.presetId === "custom" ? P.term.label : "" });
         } else {
-          const p = TERM_PRESETS.find((x) => x.id === d.id);
+          const p = Terms.upcomingTerms().find((x) => x.id === d.id);
           P.term = { presetId: p.id, label: p.label, classesStart: p.classesStart, classesEnd: p.classesEnd, examStart: p.examStart, examEnd: p.examEnd, breaks: p.breaks.map((x) => Object.assign({}, x)) };
         }
         persist(); render(); break;
@@ -706,15 +790,19 @@
       case "add-break": P.term.breaks.push({ label: "", start: "", end: "" }); persist(); render(); break;
       case "del-break": P.term.breaks.splice(Number(d.i), 1); persist(); render(); break;
       case "del-course": P.courses = P.courses.filter((x) => x.id !== d.id); persist(); render(); break;
-      case "add-meeting": c.meetings.push({ id: uid(), type: d.type, days: [], start: "", end: "", location: "" }); persist(); render(); break;
+      case "add-meeting": c.meetings.push({ id: uid(), type: d.type, slots: [], location: "" }); persist(); render(); break;
       case "del-meeting": c.meetings = c.meetings.filter((m) => m.id !== d.id); persist(); render(); break;
       case "toggle-day": {
-        const list = d.scope === "meeting"
+        const item = d.scope === "meeting"
           ? P.courses.flatMap((x) => x.meetings).find((m) => m.id === d.id)
           : P.routine.commitments.find((m) => m.id === d.id);
-        const i = list.days.indexOf(d.day);
-        if (i >= 0) list.days.splice(i, 1); else list.days.push(d.day);
-        list.days.sort((a, z) => DAYS.indexOf(a) - DAYS.indexOf(z));
+        const k = item.slots.findIndex((sl) => sl.day === d.day);
+        if (k >= 0) item.slots.splice(k, 1);
+        else {
+          const last = item.slots[item.slots.length - 1];
+          item.slots.push({ id: uid(), day: d.day, start: last ? last.start : "", end: last ? last.end : "" });
+          item.slots.sort((a, z) => DAYS.indexOf(a.day) - DAYS.indexOf(z.day));
+        }
         persist(); render(); break;
       }
       case "add-assess": {
@@ -724,7 +812,9 @@
         persist(); render(); break;
       }
       case "del-assess": c.assessments = c.assessments.filter((a) => a.id !== d.id); persist(); render(); break;
-      case "add-commit": P.routine.commitments.push({ id: uid(), label: "", days: [], start: "", end: "" }); persist(); render(); break;
+      case "add-commit": P.routine.commitments.push({ id: uid(), label: "", commute: "", slots: [] }); persist(); render(); break;
+      case "add-oneoff": P.routine.oneoffs.push({ id: uid(), label: "", date: "", start: "", end: "", commute: "" }); persist(); render(); break;
+      case "del-oneoff": P.routine.oneoffs = P.routine.oneoffs.filter((o) => o.id !== d.id); persist(); render(); break;
       case "del-commit": P.routine.commitments = P.routine.commitments.filter((m) => m.id !== d.id); persist(); render(); break;
       case "style": P.study.style = d.id; persist(); render(); break;
       case "upload": startUpload(d.kind, d.c); break;
@@ -751,12 +841,31 @@
     if (!d.bind) return null;
     let v = el.value;
     if (el.type === "number" || el.type === "range") v = v === "" ? "" : Number(v);
+    if (d.part) {
+      // Combine the hour and minute dropdowns into "HH:MM".
+      const group = el.closest(".tp");
+      const h = group.querySelector('[data-part="h"]').value, m = group.querySelector('[data-part="m"]').value;
+      if (h === "") v = "";
+      else {
+        if (m === "") group.querySelector('[data-part="m"]').value = "0";
+        v = String(h).padStart(2, "0") + ":" + String(m || 0).padStart(2, "0");
+      }
+    }
     switch (d.bind) {
       case "term": P.term[d.f] = v; break;
       case "break": P.term.breaks[Number(d.i)][d.f] = v; break;
       case "meeting": course(d.c).meetings.find((m) => m.id === d.id)[d.f] = v; break;
       case "assess": course(d.c).assessments.find((a) => a.id === d.id)[d.f] = v; break;
       case "commit": P.routine.commitments.find((m) => m.id === d.id)[d.f] = v; break;
+      case "course": course(d.id)[d.f] = v; break;
+      case "oneoff": P.routine.oneoffs.find((o) => o.id === d.id)[d.f] = v; break;
+      case "slot": {
+        const item = d.scope === "meeting"
+          ? course(d.c).meetings.find((m) => m.id === d.id)
+          : P.routine.commitments.find((m) => m.id === d.id);
+        item.slots.find((sl) => sl.id === d.s)[d.f] = v;
+        break;
+      }
       case "routine": P.routine[d.f] = v; break;
       case "study": P.study[d.f] = v; break;
     }
@@ -790,9 +899,26 @@
     const d = e.target.dataset;
     if (!d.bind) return;
     // Times, dates and selects affect warnings elsewhere on the page.
-    if (["start", "end", "due", "type"].includes(d.f) && ["meeting", "assess", "commit"].includes(d.bind)) render();
+    if (["start", "end", "due", "type", "date"].includes(d.f) && ["meeting", "assess", "commit", "slot", "oneoff"].includes(d.bind)) render();
     else refreshNav();
   });
+
+  // While typing a course code, suggest its title in the name box.
+  let lookupTimer = null;
+  app.addEventListener("input", (e) => {
+    if (e.target.id !== "newCode") return;
+    clearTimeout(lookupTimer);
+    const code = normCode(e.target.value);
+    const nameBox = document.getElementById("newName");
+    if (nameBox && nameBox.dataset.auto === "1") { nameBox.value = ""; nameBox.dataset.auto = ""; }
+    if (!isCode(code)) return;
+    lookupTimer = setTimeout(async () => {
+      const name = await Uploader.lookupCourse(code);
+      const box = document.getElementById("newName"), codeBox = document.getElementById("newCode");
+      if (name && box && codeBox && normCode(codeBox.value) === code && !box.value) { box.value = name; box.dataset.auto = "1"; }
+    }, 350);
+  });
+  app.addEventListener("input", (e) => { if (e.target.id === "newName") e.target.dataset.auto = ""; });
 
   // Clear the course-code error as soon as they type again.
   app.addEventListener("keydown", (e) => {
