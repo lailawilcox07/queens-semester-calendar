@@ -452,3 +452,5 @@ body:has(.timer-bar) .tabbar{top:auto; position:static;}
 .log-row select, .log-other select{width:auto;}
 .log-other{display:flex; flex-wrap:wrap; gap:8px; align-items:center;}
 .log-other input[type="date"]{width:auto;}
+.brand{display:inline-flex; align-items:center; gap:8px;}
+.brand img{border-radius:7px;}
