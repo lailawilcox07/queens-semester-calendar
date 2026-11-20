@@ -22,6 +22,7 @@ const SYLLABUS_TOOL = {
     properties: {
       course_code: { type: ["string", "null"], description: "Course code as printed, e.g. 'MATH 121'. Null if not shown." },
       course_name: { type: ["string", "null"] },
+      instructor: { type: ["string", "null"], description: "The main instructor's name as printed, e.g. 'Dr. Jane Smith'. Null if not shown." },
       assessments: {
         type: "array",
         items: {
@@ -38,7 +39,7 @@ const SYLLABUS_TOOL = {
       },
       warnings: { type: "array", items: { type: "string" }, description: "Anything the student should double-check, in plain language." },
     },
-    required: ["course_code", "course_name", "assessments", "warnings"],
+    required: ["course_code", "course_name", "instructor", "assessments", "warnings"],
   },
 };
 
@@ -110,8 +111,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders, json, originAllowed, validApiKey } from "../_shared/http.ts";
 
 // Uploads per student. Change with `supabase secrets set UPLOADS_PER_DAY=...`.
-const PER_DAY = Number(Deno.env.get("UPLOADS_PER_DAY") || 20);
-const PER_TERM = Number(Deno.env.get("UPLOADS_PER_TERM") || 40);
+// Pilot defaults keep the Claude bill inside a $50 budget; raise them after the pilot.
+const PER_DAY = Number(Deno.env.get("UPLOADS_PER_DAY") || 10);
+const PER_TERM = Number(Deno.env.get("UPLOADS_PER_TERM") || 15);
 
 // Uploads need a signed-in student, and each one counts toward their limits.
 // Returns an error message, or "" if the upload can go ahead.
@@ -140,6 +142,7 @@ function cleanSyllabus(r: any) {
   return {
     course_code: str(r.course_code, 20) || null,
     course_name: str(r.course_name, 80) || null,
+    instructor: str(r.instructor, 80) || null,
     assessments: arr(r.assessments).slice(0, 60).map((a) => ({
       name: str(a.name, 80) || "Assessment",
       type: ASSESS_TYPES.includes(a.type) ? a.type : "Other",

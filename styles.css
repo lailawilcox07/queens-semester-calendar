@@ -504,3 +504,12 @@ body:has(.timer-bar) .tabbar{top:auto; position:static;}
 .drop-status.ok{color:var(--ok); font-weight:600;}
 .drop-status.bad{color:var(--error);}
 .drop-hint{align-self:center;}
+
+/* shared syllabi */
+.shared-card #sharedSearch{margin:4px 0 8px;}
+.shared-list{list-style:none; padding:0; margin:0;}
+.shared-list li{display:flex; align-items:center; gap:10px; padding:9px 0; border-top:1px solid var(--line);}
+.shared-main{flex:1; display:flex; flex-direction:column; font-size:14px; min-width:0;}
+.shared-meta{font-size:12.5px; color:var(--muted);}
+.share-box{border-top:1px solid var(--line); margin-top:10px; padding-top:10px;}
+.share-box > label:first-child{margin-bottom:6px;}

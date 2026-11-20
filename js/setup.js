@@ -392,7 +392,10 @@
     if (!Uploader.enabled()) return "";
     const st = pending.syllabus[c.id];
     const btn = (label) => `<button type="button" class="btn small" data-act="upload" data-kind="syllabus" data-c="${c.id}">${label}</button>`;
-    if (!st) return `<div class="upload-row">${btn("Upload syllabus")}<span class="muted small">PDF or photos. We'll fill in the deadlines for you to check.</span></div>`;
+    if (!st) {
+      const shared = (Shared.cached(P) || []).filter((x) => x.course_code === c.code).length;
+      return `<div class="upload-row">${btn("Upload syllabus")}${shared ? `<button type="button" class="btn small" data-act="shared-for" data-code="${esc(c.code)}">Use a shared one (${shared})</button>` : ""}<span class="muted small">PDF or photos. We'll fill in the deadlines for you to check.</span></div>`;
+    }
     if (st.status === "loading") return spinner("Reading your syllabus. This can take a little while.");
     if (st.status === "error") return `<div class="alert warn">${esc(st.error)}</div><div class="add-row">${btn("Try again")}<button type="button" class="btn small ghost" data-act="discard" data-kind="syllabus" data-c="${c.id}">Cancel</button></div>`;
     const r = st.result;
@@ -407,14 +410,23 @@
         <span class="pick-date mono">${a.due_date ? esc(fmtDate(a.due_date)) : "No date"}</span>
         <span class="pick-weight mono">${a.weight != null ? esc(a.weight) + "%" : ""}</span></label>`;
     }).join("");
+    const fromShared = !!r.shared_id;
+    const shareBox = !fromShared && Shared.ready(P) ? `
+      <div class="share-box">
+        <label>Instructor<input type="text" maxlength="80" placeholder="e.g. Dr. Jane Smith" value="${esc(st.instructor)}" data-pend="instructor" data-c="${c.id}"></label>
+        <label class="rem-opt"><input type="checkbox" data-act="share-toggle" data-c="${c.id}" ${st.share ? "checked" : ""}> Share this with other ${esc(c.code)} students in ${esc(P.term.label)}</label>
+        <p class="hint">Only the course, instructor and graded work are shared, not your name.${st.share && !st.instructor ? " Add the instructor to share it." : ""}</p>
+      </div>` : "";
     return `<div class="review">
       ${mismatch ? `<div class="alert warn">This looks like the syllabus for <b>${esc(found)}</b>, not ${esc(c.code)}.</div>` : ""}
-      <h3>Found ${r.assessments.length} graded item${r.assessments.length === 1 ? "" : "s"}</h3>
-      <p class="muted small">Untick anything that's wrong. Selected items add up to ${Math.round(total * 100) / 100}%.</p>
+      <h3>${fromShared ? `Shared syllabus · ${esc(r.instructor)}` : `Found ${r.assessments.length} graded item${r.assessments.length === 1 ? "" : "s"}`}</h3>
+      <p class="muted small">${fromShared ? "Checked by another student. Make sure it matches your section's syllabus. " : ""}Untick anything that's wrong. Selected items add up to ${Math.round(total * 100) / 100}%.</p>
       ${warnList(r.warnings)}
       ${rows || `<p class="empty">Nothing graded was found.</p>`}
+      ${shareBox}
       <div class="add-row"><button type="button" class="btn primary small" data-act="apply-syllabus" data-c="${c.id}" ${n ? "" : "disabled"}>Add ${n} to ${esc(c.code)}</button>
-      <button type="button" class="btn small ghost" data-act="discard" data-kind="syllabus" data-c="${c.id}">Discard</button></div>
+      <button type="button" class="btn small ghost" data-act="discard" data-kind="syllabus" data-c="${c.id}">Discard</button>
+      ${fromShared ? `<button type="button" class="link-btn muted" data-act="shared-report" data-id="${r.shared_id}" data-c="${c.id}">Report as wrong</button>` : ""}</div>
     </div>`;
   }
 
@@ -423,7 +435,7 @@
     const have = new Set(course(courseId).assessments.map((a) => (a.name || "").toLowerCase()));
     const skip = new Set();
     result.assessments.forEach((a, i) => { if (have.has(a.name.toLowerCase())) skip.add(String(i)); });
-    return { status: "review", result, skip };
+    return { status: "review", result, skip, instructor: result.instructor || course(courseId).instructor || "", share: true };
   }
   function timetableReview(result) {
     const skip = new Set();
@@ -531,6 +543,47 @@
     persist();
   }
 
+  // ---------- shared syllabi list (Deadlines step) ----------
+  let sharedQuery = "", sharedMsg = "", sharedError = "", sharedLoading = false;
+
+  function loadShared(force) {
+    if (sharedLoading || !Shared.ready(P)) return;
+    sharedLoading = true;
+    Shared.list(P, force).then(() => { sharedError = ""; }).catch((e) => { sharedError = e.message; })
+      .finally(() => { sharedLoading = false; render(); });
+  }
+
+  function sharedResultsHTML() {
+    const list = Shared.cached(P) || [];
+    const mine = new Set(P.courses.map((c) => c.code));
+    // No search yet: show syllabi for the student's own courses.
+    const results = sharedQuery.trim() ? Shared.search(list, sharedQuery) : list.filter((x) => mine.has(x.course_code));
+    if (!list.length) return `<p class="empty">No one has shared a syllabus for ${esc(P.term.label)} yet. When you upload yours below, you can share it.</p>`;
+    if (!results.length) return `<p class="empty">${sharedQuery.trim() ? "Nothing matches that search." : "None shared for your courses yet. Try searching for another course."}</p>`;
+    return `<ul class="shared-list">${results.slice(0, 30).map((x) => `
+      <li>
+        <span class="shared-main"><b>${esc(x.course_code)}</b>${x.course_name ? ` <span class="muted">${esc(x.course_name)}</span>` : ""}
+          <span class="shared-meta">${esc(x.instructor)} · ${x.assessments.length} graded item${x.assessments.length === 1 ? "" : "s"}${x.uses ? ` · used ${x.uses} time${x.uses === 1 ? "" : "s"}` : ""}</span></span>
+        <button type="button" class="btn small" data-act="shared-use" data-id="${x.id}">Use</button>
+      </li>`).join("")}</ul>`;
+  }
+
+  function sharedCard() {
+    if (!Shared.enabled() || !Shared.termKey(P)) return "";
+    const head = `<h3>Syllabi shared by other students</h3>`;
+    if (!Sync.user()) return `<div class="card shared-card">${head}<p class="muted small">Other students taking your courses in ${esc(P.term.label)} may have already added their syllabus. <button type="button" class="link-btn" data-s="open">Sign in</button> to search them.</p></div>`;
+    if (!Shared.cached(P)) {
+      if (!sharedError) loadShared(); // after a failure, wait for "Try again" instead of retrying forever
+      return `<div class="card shared-card">${head}${sharedError ? `<div class="alert warn">${esc(sharedError)}</div><button type="button" class="btn small" data-act="shared-retry">Try again</button>` : spinner("Loading shared syllabi…")}</div>`;
+    }
+    return `<div class="card shared-card" id="sharedCard">${head}
+      <p class="muted small">From students taking the same courses in ${esc(P.term.label)}. Pick the one with your instructor, then check it before adding.</p>
+      <input type="search" id="sharedSearch" placeholder="Search by course or instructor, e.g. CISC 124 or Smith" aria-label="Search shared syllabi" value="${esc(sharedQuery)}" autocomplete="off">
+      <div id="sharedResults">${sharedResultsHTML()}</div>
+      ${sharedMsg ? `<p class="small rem-msg">${esc(sharedMsg)}</p>` : ""}
+    </div>`;
+  }
+
   function unassignedPanel() {
     if (!pending.unassigned.length) return "";
     return pending.unassigned.map((u) => `
@@ -596,11 +649,20 @@
 
   function applySyllabus(courseId) {
     const c = course(courseId), st = pending.syllabus[courseId];
+    const added = [];
     st.result.assessments.forEach((a, i) => {
       if (st.skip.has(String(i))) return;
-      c.assessments.push({ id: uid(), name: a.name, type: a.type, due: a.due_date || "", weight: a.weight == null ? "" : a.weight, note: a.note || "" });
+      const item = { id: uid(), name: a.name, type: a.type, due: a.due_date || "", weight: a.weight == null ? "" : a.weight, note: a.note || "" };
+      c.assessments.push(item);
+      added.push(item);
     });
     if (!c.name && st.result.course_name) c.name = st.result.course_name;
+    const instructor = (st.instructor || "").trim();
+    if (instructor) c.instructor = instructor;
+    if (st.result.shared_id) Shared.use(st.result.shared_id);
+    else if (st.share && instructor && added.length && Shared.ready(P)) {
+      Shared.share(P, c, instructor, added).then((ok) => { sharedMsg = ok ? `Thanks! Your ${c.code} syllabus is now shared with other students.` : ""; render(); });
+    }
     delete pending.syllabus[courseId];
     persist();
     render();
@@ -670,6 +732,7 @@
     return `
       <h2 tabindex="-1">What's due, and what's it worth?</h2>
       <p class="muted">Copy the graded work from each syllabus: name, due date and weight. Weights for each course should add up to 100%.</p>
+      ${sharedCard()}
       ${unassignedPanel()}
       ${cards}`;
   }
@@ -981,6 +1044,35 @@
       case "drop-remove": drop.files = drop.files.filter((x) => x.id !== d.id); render(); break;
       case "drop-go": runDrop(); break;
       case "drop-review": dropNotice = true; drop.files = drop.files.filter((x) => x.status === "error"); go(1); break;
+      case "shared-retry": sharedError = ""; loadShared(true); render(); break;
+      case "shared-for": {
+        sharedQuery = d.code;
+        render();
+        const card = document.getElementById("sharedCard");
+        if (card) card.scrollIntoView({ behavior: "smooth", block: "start" });
+        break;
+      }
+      case "shared-use": {
+        const item = (Shared.cached(P) || []).find((x) => String(x.id) === d.id);
+        if (!item) break;
+        let c = P.courses.find((x) => x.code === item.course_code);
+        if (!c) { c = { id: uid(), code: item.course_code, name: item.course_name || "", color: nextColor(), meetings: [], assessments: [] }; P.courses.push(c); persist(); }
+        pending.syllabus[c.id] = syllabusReview(c.id, Shared.asResult(item));
+        sharedMsg = "";
+        render();
+        const target = [...document.querySelectorAll(".course-card")].find((el) => el.querySelector("h3") && el.querySelector("h3").textContent === c.code);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        break;
+      }
+      case "shared-report": {
+        Shared.report(Number(d.id));
+        delete pending.syllabus[d.c];
+        const list = Shared.cached(P);
+        if (list) list.splice(list.findIndex((x) => String(x.id) === d.id), 1);
+        sharedMsg = "Thanks, we've flagged it. Upload your own syllabus instead.";
+        render(); break;
+      }
+      case "share-toggle": pending.syllabus[d.c].share = e.target.checked; render(); break;
       case "assign-syllabus": {
         const u = pending.unassigned.find((x) => x.id === d.id);
         const courseId = document.getElementById("assign-" + d.id).value;
@@ -1082,6 +1174,18 @@
     // Times, dates and selects affect warnings elsewhere on the page.
     if (["start", "end", "due", "type", "date"].includes(d.f) && ["meeting", "assess", "commit", "slot", "oneoff"].includes(d.bind)) render();
     else refreshNav();
+  });
+
+  // Shared syllabus search and the instructor box on a syllabus review.
+  app.addEventListener("input", (e) => {
+    if (e.target.id === "sharedSearch") {
+      sharedQuery = e.target.value;
+      const box = document.getElementById("sharedResults");
+      if (box) box.innerHTML = sharedResultsHTML();
+    } else if (e.target.dataset.pend === "instructor") {
+      const st = pending.syllabus[e.target.dataset.c];
+      if (st) st.instructor = e.target.value;
+    }
   });
 
   // While typing a course code, suggest its title in the name box.

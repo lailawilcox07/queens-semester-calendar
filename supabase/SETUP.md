@@ -6,14 +6,33 @@ This turns on:
 - **Course names**, filled in automatically from the Queen's Academic Calendar.
 - **Push reminders** before classes and commitments, when study blocks start, and before deadlines.
 
-It takes about 20 minutes, and you only do it once. Run the commands on your laptop, in this repo folder.
+It takes about 30 minutes, and you only do it once. Run the commands on your laptop, in this repo folder.
+
+## Pilot budget: $50
+
+The pilot is set up to stay under $50 for one term with about 50 students:
+
+| | Plan | Cost |
+| --- | --- | --- |
+| Website | GitHub Pages | Free |
+| Accounts, sync, reminders, shared syllabi | Supabase Free plan | Free |
+| Sign-in emails | Resend Free plan (100 emails a day) | Free |
+| Domain for sending email | Any registrar | About $15–25 a year |
+| Reading uploads | Claude API, with a **$30 spend limit** | About $25–30 at most |
+
+What keeps it there:
+- **Upload limits:** each student gets 10 uploads a day and 15 a term (the defaults in the extract function). A full setup takes about 6.
+- **Shared syllabi:** once one student shares a course's syllabus, classmates pick it from the list for free.
+- **A hard cap:** set the Anthropic spend limit to $30 a month (step 1). If it's ever reached, uploads stop working and students can still type things in. Nothing else is affected.
+
+After the pilot, raise the upload limits and spend cap, and move Supabase to the Pro plan ($25/month) before a full launch.
 
 ## 1. Get a Claude API key
 
 1. Go to [console.anthropic.com](https://console.anthropic.com) and sign in.
 2. Under **Billing**, add a small prepaid credit.
 3. Under **API keys**, create a key named `semester-calendar` and copy it. You'll only see it once.
-4. Under **Limits**, set a monthly spend limit.
+4. Under **Limits**, set a monthly spend limit of **$30** for the pilot.
 
 Never put this key in the website code or commit it to GitHub.
 
@@ -57,6 +76,7 @@ npx supabase functions deploy reminders
 `db push` creates:
 - `student_data`: one row per student holding their semester. Each student can only read and change their own row.
 - `uploads`: a record of each upload, used for the limits.
+- `shared_syllabi`: syllabi students chose to share. Signed-in students can see the ones for the current term. Each one is hidden two weeks after its term's exams end, or once 3 students report it as wrong.
 - A rule that only `@queensu.ca` emails can create accounts. To test with another address, run this in **SQL Editor**: `drop trigger if exists queens_email_only on auth.users;`
 
 Optional settings, with `npx supabase secrets set NAME=value`:
@@ -64,8 +84,8 @@ Optional settings, with `npx supabase secrets set NAME=value`:
 | Name | Default | What it does |
 | --- | --- | --- |
 | `CLAUDE_MODEL` | `claude-sonnet-5-5` | Set to `claude-haiku-5-5` to cut costs |
-| `UPLOADS_PER_DAY` | `20` | Uploads per student per day |
-| `UPLOADS_PER_TERM` | `40` | Uploads per student in any 120 days |
+| `UPLOADS_PER_DAY` | `10` | Uploads per student per day (pilot setting) |
+| `UPLOADS_PER_TERM` | `15` | Uploads per student in any 120 days (pilot setting) |
 | `ALLOWED_ORIGINS` | `https://lailawilcox07.github.io,http://localhost:8000` | Sites allowed to use the functions |
 
 ## 5. Turn on push reminders
@@ -117,7 +137,8 @@ Commit and push. "Sign in to sync" appears in the top right, and the upload butt
 2. On your laptop, open **Add to your phone** at the bottom and scan the QR code with your phone. Your semester should open on the phone, already signed in. (Or open the site on your phone and sign in with the same email.)
 3. Tick something off on your phone, then switch back to the laptop tab. It should update within a few seconds.
 4. In setup, upload a syllabus.
-5. On your phone (added to the home screen on iPhone), go to **To-Do → Reminders**, turn them on and tap **Send a test**.
+5. Upload a syllabus with **Share this with other students** ticked. Then sign in as a second student, add the same course for the same term, and check it appears under **Syllabi shared by other students**.
+6. On your phone (added to the home screen on iPhone), go to **To-Do → Reminders**, turn them on and tap **Send a test**.
 
 If something fails:
 - **Edge Functions → extract → Logs** shows upload errors, and **reminders → Logs** shows reminder runs.

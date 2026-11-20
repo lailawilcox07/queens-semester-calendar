@@ -24,6 +24,10 @@ Try it with sample data: open the site and click "Or try a demo with sample cour
 
 **Milestone 6: push reminders (built, needs backend setup).** In To-Do → Reminders, students turn on notifications for classes (with the commute before the first class), commitments and events (with travel time), study blocks, and deadlines (morning of and evening before). A scheduled Supabase function sends them every 5 minutes using the same rules as the app (`js/reminders.js`). On iPhone, reminders need the app on the home screen.
 
+**Shared syllabi.** After checking an uploaded syllabus, a student can share it, along with its instructor, with others taking the same course in the same term. On the Deadlines step, signed-in students can search the term's shared syllabi by course or instructor and use one instead of uploading. Shared syllabi are anonymous, only visible for their own term, and hidden if 3 students report them.
+
+**Pilot budget: $50.** See [supabase/SETUP.md](supabase/SETUP.md#pilot-budget-50).
+
 ## Shared code
 
 `supabase/functions/_shared/engine.js` and `reminders.js` are copies of the files in `js/`, so the server plans reminders exactly like the app. After changing either, run `scripts/sync-shared.sh`.
