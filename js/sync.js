@@ -53,7 +53,14 @@
         auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false },
       });
       const { data } = await sb.auth.getSession();
-      if (data && data.session) { user = data.session.user; await pull(); }
+      // Opened from the laptop's QR code: sign in with its one-time code.
+      const params = new URLSearchParams(location.search);
+      const hash = params.get("signin");
+      if (hash) {
+        params.delete("signin");
+        history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params : "") + location.hash);
+        await signInWithHash(hash, data && data.session);
+      } else if (data && data.session) { user = data.session.user; await pull(); }
       sb.auth.onAuthStateChange((event, session) => {
         if (event === "SIGNED_OUT") { user = null; status = "signed-out"; hooks.rerender(); }
         else if (session) user = session.user;
@@ -251,6 +258,35 @@
     return true;
   }
 
+  async function signInWithHash(hash, existing) {
+    const { data, error } = await sb.auth.verifyOtp({ token_hash: hash, type: "email" });
+    if (error || !data || !data.user) {
+      if (existing) { user = existing.user; await pull(); return; }
+      panel.open = true; panel.step = "email";
+      panel.error = "That QR code has expired or was already used. Sign in with your email instead.";
+      return;
+    }
+    user = data.user;
+    await pull();
+  }
+
+  // A one-time sign-in code for the QR code on the laptop (see phone-link function).
+  async function phoneLink() {
+    const token = await accessToken();
+    if (!token) return null;
+    try {
+      const res = await fetch(cfg().supabaseUrl.replace(/\/$/, "") + "/functions/v1/phone-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: cfg().supabaseKey, Authorization: "Bearer " + token },
+        body: "{}",
+      });
+      const body = await res.json();
+      return body && body.ok ? body.hash : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function accessToken() {
     if (!sb || !user) return null;
     const { data } = await sb.auth.getSession();
@@ -258,7 +294,7 @@
   }
 
   root.Sync = {
-    enabled, init, handle, chipHTML, panelHTML, schedulePush, accessToken, open,
+    enabled, init, handle, chipHTML, panelHTML, schedulePush, accessToken, open, phoneLink,
     user: () => user,
   };
 })(window);

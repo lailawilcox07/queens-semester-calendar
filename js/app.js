@@ -416,7 +416,7 @@
         <ul class="grade-items">${c.assessments.map((a) => {
           const marked = hasVal(pr.grades[a.id]);
           return `<li class="${marked ? "marked" : ""}"><span class="gi-name">${esc(a.name || a.type)}<span class="muted small"> · ${a.weight !== "" && a.weight != null ? esc(a.weight) + "%" : "no weight"}</span></span>
-            <label class="grade-in pred">${marked ? `<span class="muted small">${hasVal(pr.predicted[a.id]) ? esc(pr.predicted[a.id]) + "%" : ""}</span>` : `<input type="number" inputmode="decimal" min="0" max="150" step="1" placeholder="${needHint}" aria-label="Predicted mark on ${esc(a.name)}${needHint ? `, you need about ${needHint}%` : ""}" value="${pr.predicted[a.id] ?? ""}" data-a="predict" data-id="${a.id}"><span>%</span>`}</label>
+            <label class="grade-in pred">${marked ? "" : `<input type="number" inputmode="decimal" min="0" max="150" step="1" placeholder="${needHint}" aria-label="Predicted mark on ${esc(a.name)}${needHint ? `, you need about ${needHint}%` : ""}" value="${pr.predicted[a.id] ?? ""}" data-a="predict" data-id="${a.id}"><span>%</span>`}</label>
             <label class="grade-in"><input type="number" inputmode="decimal" min="0" max="150" step="0.1" placeholder="—" aria-label="Your actual mark on ${esc(a.name)} in percent" value="${pr.grades[a.id] ?? ""}" data-a="grade" data-id="${a.id}"><span>%</span></label></li>`;
         }).join("")}
         </ul>

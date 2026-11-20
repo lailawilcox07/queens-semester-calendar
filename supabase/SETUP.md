@@ -36,8 +36,9 @@ Students sign in with a 6-digit code sent to their email.
    <p>If you didn't ask for this, you can ignore this email.</p>
    ```
 
-3. Go to **Authentication → URL Configuration** and set **Site URL** to `https://lailawilcox07.github.io/queens-semester-calendar/`.
-4. **Before the pilot:** Supabase's built-in email sender only allows a handful of emails per hour and is meant for testing. Under **Authentication → Emails → SMTP Settings**, connect a real email service, such as Resend.
+3. Under **Authentication → Emails**, the same one-time code also powers the QR code on a laptop that signs the phone in. Leave **Email OTP Expiration** at a short time, like 10 minutes (600 seconds), so an old QR code can't be reused later.
+4. Go to **Authentication → URL Configuration** and set **Site URL** to `https://lailawilcox07.github.io/queens-semester-calendar/`.
+5. **Before the pilot:** Supabase's built-in email sender only allows a handful of emails per hour and is meant for testing. Under **Authentication → Emails → SMTP Settings**, connect a real email service, such as Resend.
 
 ## 4. Create the database tables and deploy the functions
 
@@ -48,6 +49,7 @@ npx supabase db push
 npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 npx supabase functions deploy extract
 npx supabase functions deploy course-lookup
+npx supabase functions deploy phone-link
 ```
 
 `db push` creates:
@@ -80,7 +82,7 @@ Commit and push. "Sign in to sync" appears in the top right, and the upload butt
 ## Checking it works
 
 1. On your laptop, click **Sign in to sync**, enter your Queen's email, then the code from the email.
-2. On your phone, open the site, tap **Sign in** on the welcome screen and use the same email. Your semester should appear.
+2. On your laptop, open **Add to your phone** at the bottom and scan the QR code with your phone. Your semester should open on the phone, already signed in. (Or open the site on your phone and sign in with the same email.)
 3. Tick something off on your phone, then switch back to the laptop tab. It should update within a few seconds.
 4. In setup, upload a syllabus.
 

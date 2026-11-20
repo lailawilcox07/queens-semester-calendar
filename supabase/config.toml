@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.course-lookup]
 verify_jwt = false
+
+[functions.phone-link]
+verify_jwt = false

@@ -179,7 +179,7 @@
     if (P.setupComplete && P.step >= STEPS.length) app.innerHTML = Sync.panelHTML() + Install.cardHTML() + App.render(P) + renderFooter();
     else app.innerHTML = Sync.panelHTML() + renderShell(STEPS[P.step].id);
     window.scrollTo(0, keepScroll ? scrollY : 0);
-    if (P.setupComplete && P.step >= STEPS.length) App.afterRender(app);
+    if (P.setupComplete && P.step >= STEPS.length) { App.afterRender(app); Install.afterRender(); }
     if (focusKey && keepScroll) { const el = app.querySelector(focusKey); if (el) el.focus({ preventScroll: true }); }
     if (!keepScroll) {
       const h = app.querySelector("h2");

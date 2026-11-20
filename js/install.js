@@ -59,15 +59,41 @@
             <li><span>Tap <b>Install</b>.</span></li>
           </ol>`;
     }
+    const syncOn = root.Sync && Sync.enabled();
+    const signedIn = syncOn && Sync.user();
     return `
       <div class="guide-desktop">
-        <img src="assets/qr-site.svg" alt="QR code linking to ${SITE}" width="132" height="132">
+        <div id="qrBox" class="qr-box" aria-live="polite">${qrSvg(siteUrl())}</div>
         <div>
-          <p><b>Scan this with your phone's camera</b> to open Semester Calendar there.</p>
-          <p class="muted small">${!(root.Sync && Sync.enabled()) ? "Your semester is saved on this device only for now, so you'd set it up again on your phone." : Sync.user() ? "Sign in with the same email on your phone and your semester will be there." : "Sign in on both devices to have the same semester on each."} Then follow the steps on your phone to add it to your home screen.</p>
+          <p><b>Scan this with your phone's camera.</b></p>
+          <p class="muted small">${!syncOn ? "It opens Semester Calendar on your phone. Your semester is saved on this computer only for now, so you'd set it up again there."
+            : signedIn ? "It opens your semester on your phone, already signed in, with everything you've set up. The code works once, so reopen this to get a new one."
+            : "It opens Semester Calendar on your phone. Sign in on both devices with the same email to see the same semester."} Then follow the steps on your phone to add it to your home screen.</p>
           ${deferred ? `<p class="small">You can also add it to this computer: <button type="button" class="link-btn" data-i="prompt">Install on this computer</button></p>` : ""}
         </div>
       </div>`;
+  }
+
+  const siteUrl = () => location.origin + location.pathname;
+  function qrSvg(text) {
+    if (!root.qrcode) return `<img src="assets/qr-site.svg" alt="QR code for the site" width="140" height="140">`;
+    const q = root.qrcode(0, "M");
+    q.addData(text);
+    q.make();
+    return q.createSvgTag({ cellSize: 3, margin: 2, scalable: true, alt: "QR code to open Semester Calendar on your phone" });
+  }
+
+  // Signed in on a laptop: swap in a QR code that signs the phone in too.
+  let linkFor = null;
+  async function afterRender() {
+    const box = document.getElementById("qrBox");
+    if (!box || !(root.Sync && Sync.user())) return;
+    if (linkFor && Date.now() - linkFor.at < 5 * 60e3) { box.innerHTML = qrSvg(linkFor.url); return; }
+    const hash = await Sync.phoneLink();
+    if (!hash) return; // keep the plain QR code
+    linkFor = { url: siteUrl() + "?signin=" + encodeURIComponent(hash), at: Date.now() };
+    const again = document.getElementById("qrBox");
+    if (again) again.innerHTML = qrSvg(linkFor.url);
   }
 
   // The card shown at the top of the app, and from the "Add to your phone" link.
@@ -98,7 +124,7 @@
     const el = e.target.closest("[data-i]");
     if (!el) return false;
     switch (el.dataset.i) {
-      case "open": open = true; break;
+      case "open": open = true; linkFor = null; break;
       case "close": open = false; state.dismissed = true; save(); break;
       case "dismiss": state.dismissed = true; save(); break;
       case "prompt":
@@ -115,5 +141,5 @@
     root.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
   }
 
-  root.Install = { cardHTML, linkHTML, handle, installed, platform, onChange: null };
+  root.Install = { cardHTML, linkHTML, handle, installed, platform, afterRender, onChange: null };
 })(window);
