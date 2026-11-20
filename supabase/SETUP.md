@@ -4,6 +4,7 @@ This turns on:
 - **Accounts and sync**: students sign in with their Queen's email and see the same semester on every device.
 - **Uploads**: "Upload syllabus" and "Upload timetable screenshot" in setup, limited per student.
 - **Course names**, filled in automatically from the Queen's Academic Calendar.
+- **Push reminders** before classes and commitments, when study blocks start, and before deadlines.
 
 It takes about 20 minutes, and you only do it once. Run the commands on your laptop, in this repo folder.
 
@@ -50,6 +51,7 @@ npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
 npx supabase functions deploy extract
 npx supabase functions deploy course-lookup
 npx supabase functions deploy phone-link
+npx supabase functions deploy reminders
 ```
 
 `db push` creates:
@@ -66,7 +68,36 @@ Optional settings, with `npx supabase secrets set NAME=value`:
 | `UPLOADS_PER_TERM` | `40` | Uploads per student in any 120 days |
 | `ALLOWED_ORIGINS` | `https://lailawilcox07.github.io,http://localhost:8000` | Sites allowed to use the functions |
 
-## 5. Connect the site
+## 5. Turn on push reminders
+
+1. Make the reminder keys (a public and a private half):
+
+   ```
+   npx web-push generate-vapid-keys
+   ```
+
+2. Save them, plus a made-up password for the scheduler (any long random text), as secrets:
+
+   ```
+   npx supabase secrets set VAPID_PUBLIC_KEY=... VAPID_PRIVATE_KEY=... VAPID_SUBJECT=mailto:you@queensu.ca CRON_SECRET=some-long-random-text
+   ```
+
+3. In Supabase, go to **Database → Extensions** and turn on **pg_cron** and **pg_net**.
+4. In **SQL Editor**, run this with your project ID and the same `CRON_SECRET`. It checks for reminders to send every 5 minutes:
+
+   ```sql
+   select cron.schedule('send-reminders', '*/5 * * * *', $$
+     select net.http_post(
+       url := 'https://YOUR_PROJECT_ID.supabase.co/functions/v1/reminders',
+       headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', 'some-long-random-text'),
+       body := '{}'::jsonb
+     );
+   $$);
+   ```
+
+Reminder times use Kingston time (America/Toronto). If you change `js/engine.js` or `js/reminders.js`, run `scripts/sync-shared.sh` and redeploy the reminders function so the server uses the same rules.
+
+## 6. Connect the site
 
 Edit `js/config.js`:
 
@@ -74,6 +105,7 @@ Edit `js/config.js`:
 window.APP_CONFIG = {
   supabaseUrl: "https://YOUR_PROJECT_ID.supabase.co",
   supabaseKey: "sb_publishable_...",
+  vapidPublicKey: "the VAPID_PUBLIC_KEY from step 5",
 };
 ```
 
@@ -85,9 +117,10 @@ Commit and push. "Sign in to sync" appears in the top right, and the upload butt
 2. On your laptop, open **Add to your phone** at the bottom and scan the QR code with your phone. Your semester should open on the phone, already signed in. (Or open the site on your phone and sign in with the same email.)
 3. Tick something off on your phone, then switch back to the laptop tab. It should update within a few seconds.
 4. In setup, upload a syllabus.
+5. On your phone (added to the home screen on iPhone), go to **To-Do → Reminders**, turn them on and tap **Send a test**.
 
 If something fails:
-- **Edge Functions → extract → Logs** shows upload errors.
+- **Edge Functions → extract → Logs** shows upload errors, and **reminders → Logs** shows reminder runs.
 - **Authentication → Users** shows who has signed up.
 - **Table Editor → student_data** shows saved semesters.
 

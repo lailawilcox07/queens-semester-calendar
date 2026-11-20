@@ -481,3 +481,14 @@ body:has(.timer-bar) .tabbar{top:auto; position:static;}
 .guide-desktop > div{flex:1 1 220px;}
 .qr-box{width:148px; height:148px; background:#fff; border-radius:10px; padding:6px; border:1px solid var(--line); flex:none;}
 .qr-box svg, .qr-box img{width:100%; height:100%; display:block;}
+
+/* reminders */
+.rem-opts{display:flex; flex-direction:column; gap:2px; margin:6px 0 10px;}
+.rem-opt{flex-direction:row; align-items:center; gap:8px; font-weight:400; font-size:14px; padding:4px 0; cursor:pointer;}
+.rem-opt input{width:18px; height:18px; min-height:0; accent-color:var(--accent);}
+.rem-lead{flex-wrap:wrap; font-size:13.5px; margin-bottom:6px;}
+.rem-lead select{width:auto;}
+.rem-list{list-style:none; padding:0; margin:0 0 10px;}
+.rem-list li{display:flex; gap:10px; font-size:13.5px; padding:4px 0; border-top:1px solid var(--line);}
+.rem-list .mono{color:var(--muted); min-width:62px; font-size:12.5px;}
+.rem-msg{margin:8px 0 0; color:var(--accent); font-weight:500;}

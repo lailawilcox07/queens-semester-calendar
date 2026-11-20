@@ -296,5 +296,6 @@
   root.Sync = {
     enabled, init, handle, chipHTML, panelHTML, schedulePush, accessToken, open, phoneLink,
     user: () => user,
+    client: () => sb,
   };
 })(window);

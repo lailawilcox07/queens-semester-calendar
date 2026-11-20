@@ -22,8 +22,11 @@ Try it with sample data: open the site and click "Or try a demo with sample cour
 
 **Milestone 5: add to your phone (done).** After setup, a card offers "Add it to your home screen" with steps for the student's own phone: iPhone (Safari, including the iOS 26 menu), Android (Chrome's install prompt when available), or a QR code on laptops. It can be reopened from "Add to your phone" at the bottom. A service worker lets the app open offline.
 
-Coming next:
-- Push reminders
+**Milestone 6: push reminders (built, needs backend setup).** In To-Do → Reminders, students turn on notifications for classes (with the commute before the first class), commitments and events (with travel time), study blocks, and deadlines (morning of and evening before). A scheduled Supabase function sends them every 5 minutes using the same rules as the app (`js/reminders.js`). On iPhone, reminders need the app on the home screen.
+
+## Shared code
+
+`supabase/functions/_shared/engine.js` and `reminders.js` are copies of the files in `js/`, so the server plans reminders exactly like the app. After changing either, run `scripts/sync-shared.sh`.
 
 ## Updating term dates
 

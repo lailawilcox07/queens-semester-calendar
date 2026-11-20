@@ -20,6 +20,9 @@
 
   let ui = { tab: "cal", week: null, dueCourse: "all", showDone: false };
   try { Object.assign(ui, JSON.parse(localStorage.getItem(UI_KEY) || "{}")); } catch (e) {}
+  // Reminders open the app on a specific tab, e.g. ?tab=todo.
+  const tabParam = new URLSearchParams(location.search).get("tab");
+  if (["cal", "todo", "due", "grades"].includes(tabParam)) ui.tab = tabParam;
   const saveUI = () => { try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) {} };
 
   let ctx = null; // { getProfile, save, rerender }
@@ -264,7 +267,8 @@
         ${firstTomorrow ? `<p class="muted small">Tomorrow starts with <b>${esc(firstTomorrow.title)}</b> ${esc(itemSub(firstTomorrow))} at ${fmtTime(firstTomorrow.start)}.</p>` : ""}
       </div>
       ${forgotCard(P, today)}
-      ${insightsCard(P)}`;
+      ${insightsCard(P)}
+      ${remindersCard(P, today)}`;
   }
 
   // ---------- logging study done without the timer ----------
@@ -305,6 +309,67 @@
         <button type="button" class="btn small" data-a="log-other">Log it</button>
       </div>
     </div>`;
+  }
+
+  // ---------- reminders ----------
+  let deviceOn = null;   // is this device subscribed? (checked after drawing)
+  let remMsg = "", remBusy = false;
+
+  function remindersCard(P, today) {
+    if (!root.Push || !Push.available()) return "";
+    const s = Reminders.settings(P);
+    const head = `<h3>Reminders</h3><p class="muted small">Notifications before classes and commitments, when study blocks start, and before deadlines.</p>`;
+    if (!Sync.user()) return `<div class="card reminders">${head}<button type="button" class="btn small" data-s="open">Sign in to turn on reminders</button></div>`;
+    if (Push.needsInstall()) return `<div class="card reminders">${head}<p class="small">On iPhone, reminders work once the app is on your home screen.</p><button type="button" class="btn small" data-i="open">Show me how</button></div>`;
+    if (!Push.supported()) return `<div class="card reminders">${head}<p class="small muted">This browser can't show notifications. Try Chrome, or add the app to your home screen.</p></div>`;
+    const msg = remMsg ? `<p class="small rem-msg">${esc(remMsg)}</p>` : "";
+    if (!s.enabled || deviceOn === false) {
+      return `<div class="card reminders">${head}
+        <button type="button" class="btn primary small" data-a="rem-on" ${remBusy ? "disabled" : ""}>${remBusy ? "Turning on…" : s.enabled ? "Turn on for this device" : "Turn on reminders"}</button>${msg}</div>`;
+    }
+    const nowMin = (() => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); })();
+    const realToday = !new URLSearchParams(location.search).get("today");
+    const upcoming = Reminders.forDay(P, eng, today).filter((r) => !realToday || r.at >= nowMin).slice(0, 5);
+    const hhmm = (m) => fmtTime(String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"));
+    const box = (k, label) => `<label class="rem-opt"><input type="checkbox" data-a="rem-opt" data-k="${k}" ${s[k] ? "checked" : ""}> ${label}</label>`;
+    return `<div class="card reminders">${head}
+      <div class="rem-opts">
+        ${box("classes", "Classes")}${box("events", "Commitments and events")}${box("study", "Study blocks")}${box("deadlines", "Deadlines (morning of and evening before)")}
+      </div>
+      <label class="inline rem-lead">Warn me
+        <select data-a="rem-opt" data-k="lead">${[5, 10, 15, 20, 30].map((m) => `<option value="${m}" ${Number(s.lead) === m ? "selected" : ""}>${m} min</option>`).join("")}</select>
+        before classes and commitments, plus travel time</label>
+      ${upcoming.length ? `<p class="small log-sub">${realToday ? "Still to come today" : "Reminders this day"}</p><ul class="rem-list">${upcoming.map((r) => `<li><span class="mono">${hhmm(r.at)}</span><span>${esc(r.title)}</span></li>`).join("")}</ul>` : ""}
+      <div class="add-row"><button type="button" class="btn small" data-a="rem-test" ${remBusy ? "disabled" : ""}>Send a test</button><button type="button" class="btn small ghost" data-a="rem-off">Turn off reminders</button></div>
+      ${msg}
+    </div>`;
+  }
+
+  async function remAction(P, act) {
+    const pr = P;
+    remBusy = true; remMsg = ""; ctx.rerender();
+    try {
+      if (act === "on") {
+        await Push.enable();
+        pr.reminders = Object.assign(Reminders.settings(pr), { enabled: true });
+        deviceOn = true;
+        ctx.save();
+        remMsg = "Reminders are on for this device.";
+      } else if (act === "off") {
+        await Push.disable();
+        pr.reminders = Object.assign(Reminders.settings(pr), { enabled: false });
+        deviceOn = false;
+        ctx.save();
+        remMsg = "";
+      } else if (act === "test") {
+        await Push.test();
+        remMsg = "Test sent. It should arrive in a few seconds.";
+      }
+    } catch (e) {
+      remMsg = e.message || "Something went wrong.";
+    }
+    remBusy = false;
+    ctx.rerender();
   }
 
   // ---------- study timer ----------
@@ -484,6 +549,10 @@
           pr.timer = { courseId: sel.value, blockId: null, label: "Extra study", start: Date.now(), elapsed: 0 };
           ctx.save(); break;
         }
+        case "rem-on": remAction(P, "on"); return true;
+        case "rem-off": remAction(P, "off"); return true;
+        case "rem-test": remAction(P, "test"); return true;
+        case "rem-opt": if (el.type === "checkbox") { P.reminders = Object.assign(Reminders.settings(P), { [d.k]: el.checked }); ctx.save(); } else return true; break;
         case "log-block": {
           const minutes = Number(el.closest(".log-row").querySelector("select").value);
           pr.sessions.push({ id: Math.random().toString(36).slice(2, 9), courseId: d.c, blockId: d.id, date: d.date, minutes, manual: true });
@@ -515,6 +584,7 @@
       ctx.rerender();
       return true;
     }
+    if (e.type === "change" && d.a === "rem-opt" && el.tagName === "SELECT") { P.reminders = Object.assign(Reminders.settings(P), { [d.k]: Number(el.value) }); ctx.save(); ctx.rerender(); return true; }
     if (e.type === "change" && d.a === "target") { pr.target[d.id] = Number(el.value); ctx.save(); ctx.rerender(); return true; }
     if (e.type === "change" && (d.a === "grade" || d.a === "predict")) {
       const store = d.a === "grade" ? pr.grades : pr.predicted;
@@ -528,6 +598,10 @@
 
   // After drawing: scroll the week picker so the chosen week is in view.
   function afterRender(container) {
+    if (deviceOn === null && root.Push && Push.available() && Push.supported() && root.Sync && Sync.user()) {
+      deviceOn = undefined; // checking
+      Push.currentSub().then((sub) => { deviceOn = !!sub; ctx.rerender(); }).catch(() => { deviceOn = false; });
+    }
     const bar = container.querySelector(".weekbar"), on = bar && bar.querySelector(".wk-btn.on");
     if (on) bar.scrollLeft = on.offsetLeft - bar.clientWidth / 2 + on.offsetWidth / 2 - bar.offsetLeft;
   }
