@@ -74,6 +74,15 @@
     hooks.rerender();
   }
 
+  // Just the time the account copy last changed: a tiny request, so checking
+  // often (every time the app comes to the front) costs almost nothing.
+  async function remoteTime() {
+    const { data, error } = await sb.from("student_data").select("updated_at").eq("user_id", user.id).maybeSingle();
+    if (error) throw error;
+    return data ? data.updated_at : null;
+  }
+  const sameTime = (a, b) => !!a && !!b && Date.parse(a) === Date.parse(b);
+
   async function fetchRemote() {
     const { data, error } = await sb.from("student_data").select("data, updated_at").eq("user_id", user.id).maybeSingle();
     if (error) throw error;
@@ -85,18 +94,26 @@
     if (!user) return;
     setStatus("syncing");
     try {
-      const row = await fetchRemote();
       const P = hooks.getProfile();
       const linked = P.meta && P.meta.userId === user.id;
+      // Nothing changed in the account since this device last synced: only send local changes, if any.
+      if (linked && sameTime(await remoteTime(), P.meta.remoteAt)) {
+        if ((P.meta.updatedAt || 0) > (P.meta.pushedAt || 0)) await push();
+        lastSync = Date.now();
+        if (status === "syncing") status = "synced";
+        hooks.rerender();
+        return;
+      }
+      const row = await fetchRemote();
       if (!row) {
         await push();
       } else if (!linked) {
         // First sign-in on this device.
-        if (isEmpty(P)) take(row.data);
+        if (isEmpty(P)) take(row);
         else { panel.open = true; panel.step = "choose"; panel.remote = row; }
       } else {
-        const remoteTime = (row.data.meta || {}).updatedAt || 0, localTime = (P.meta || {}).updatedAt || 0;
-        if (remoteTime > localTime) take(row.data);
+        const remoteStamp = (row.data.meta || {}).updatedAt || 0, localTime = (P.meta || {}).updatedAt || 0;
+        if (remoteStamp > localTime) take(row);
         else if (localTime > remoteTime) await push();
       }
       lastSync = Date.now();
@@ -107,8 +124,9 @@
     hooks.rerender();
   }
 
-  function take(data) {
-    data.meta = Object.assign({}, data.meta, { userId: user.id });
+  function take(row) {
+    const data = row.data;
+    data.meta = Object.assign({}, data.meta, { userId: user.id, remoteAt: row.updated_at, pushedAt: (data.meta || {}).updatedAt || 0 });
     hooks.replace(data);
   }
 
@@ -117,11 +135,17 @@
     clearTimeout(pushTimer);
     const P = hooks.getProfile();
     if (P.meta && P.meta.demo) return; // never save the demo to an account
+    const stamp = new Date().toISOString();
+    const sentAt = (P.meta || {}).updatedAt || 0;
     P.meta = Object.assign({}, P.meta, { userId: user.id });
     setStatus("syncing");
     try {
-      const { error } = await sb.from("student_data").upsert({ user_id: user.id, data: P, updated_at: new Date().toISOString() });
+      const { error } = await sb.from("student_data").upsert({ user_id: user.id, data: P, updated_at: stamp });
       if (error) throw error;
+      // Remember what the account now holds, so the next check can be a tiny one.
+      P.meta.remoteAt = stamp;
+      P.meta.pushedAt = sentAt;
+      if (root.Store) root.Store.saveNow(P, { keepTime: true });
       lastSync = Date.now();
       setStatus("synced");
     } catch (e) {
@@ -249,7 +273,7 @@
         user = null; status = "signed-out"; panel.open = false; panel.confirmOut = false;
         hooks.clearLocal();
         break;
-      case "keep-remote": panel.open = false; take(panel.remote.data); panel.remote = null; lastSync = Date.now(); status = "synced"; break;
+      case "keep-remote": panel.open = false; take(panel.remote); panel.remote = null; lastSync = Date.now(); status = "synced"; break;
       case "keep-local": panel.open = false; panel.remote = null; await push(); break;
       default: return false;
     }

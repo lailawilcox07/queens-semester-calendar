@@ -24,7 +24,8 @@
   let returnToReview = false;
   let confirmingReset = false;
   // Uploads being read or reviewed. Not saved: a review is finished in one sitting.
-  const pending = { timetable: null, syllabus: {} };
+  const pending = { timetable: null, syllabus: {}, unassigned: [] };
+  let dropNotice = false;
   const app = document.getElementById("app");
 
   // ---------- small helpers ----------
@@ -235,6 +236,7 @@
           </ol>
           <p class="muted small">Setup is easiest on a laptop.</p>
         </div>
+        ${dropboxHTML()}
         <p class="privacy"><b>Private by default.</b> No account needed. Everything you enter stays on this device.${Uploader.enabled() ? " If you upload a syllabus or timetable, it's sent to Claude, Anthropic's AI, to read it. This site doesn't keep a copy." : ""}</p>
         <p class="muted small">You can skip anything and come back to it later.</p>
         <button type="button" class="btn primary big" data-act="next">${resuming ? "Continue setup" : "Get started"}</button>
@@ -258,6 +260,7 @@
         <button type="button" class="icon-btn" data-act="del-break" data-i="${i}" aria-label="Remove ${esc(b.label || "break")}">×</button>
       </div>`).join("");
     return `
+      ${dropNotice ? `<div class="alert ok" role="status">We read your files. Check your term here, then review what we found on the next steps: courses, class times and deadlines.</div>` : ""}
       <h2 tabindex="-1">Which term are you planning?</h2>
       <p class="muted">Dates come from the Queen's Arts and Science sessional dates, including reading week and holidays. If your faculty's dates are different, edit them below.</p>
       <div class="choices">${presets}
@@ -415,6 +418,133 @@
     </div>`;
   }
 
+  // Review state for an upload's results. Items the student already has start unticked.
+  function syllabusReview(courseId, result) {
+    const have = new Set(course(courseId).assessments.map((a) => (a.name || "").toLowerCase()));
+    const skip = new Set();
+    result.assessments.forEach((a, i) => { if (have.has(a.name.toLowerCase())) skip.add(String(i)); });
+    return { status: "review", result, skip };
+  }
+  function timetableReview(result) {
+    const skip = new Set();
+    result.courses.forEach((c, ci) => {
+      const ex = P.courses.find((x) => x.code === normCode(c.course_code));
+      c.meetings.forEach((m, mi) => { if (ex && ex.meetings.some((em) => sameMeeting(em, m))) skip.add(ci + ":" + mi); });
+    });
+    return { status: "review", result, skip };
+  }
+
+  // ---------- the welcome-page dropbox: upload everything at once ----------
+  const drop = { files: [], running: false, over: false };
+  const isPdf = (f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name);
+
+  function addDropFiles(list) {
+    Array.from(list || []).forEach((f) => {
+      if (!isPdf(f) && !/^image\//.test(f.type) && !/\.(heic|heif|png|jpe?g|webp)$/i.test(f.name)) return;
+      // Guess: PDFs are syllabi; the first image is the schedule screenshot.
+      const kind = isPdf(f) ? "syllabus" : drop.files.some((x) => x.kind === "timetable") ? "syllabus" : "timetable";
+      drop.files.push({ id: uid(), file: f, kind, status: "ready", error: "" });
+    });
+    render();
+  }
+
+  function dropboxHTML() {
+    if (!Uploader.enabled()) return "";
+    const rows = drop.files.map((x) => `
+      <li class="drop-file st-${x.status}">
+        <span class="drop-name">${esc(x.file.name)}</span>
+        ${x.status === "ready" ? `<select data-act="drop-kind" data-id="${x.id}" aria-label="What is ${esc(x.file.name)}?">
+            <option value="timetable" ${x.kind === "timetable" ? "selected" : ""} ${isPdf(x.file) ? "disabled" : ""}>MySOLUS schedule</option>
+            <option value="syllabus" ${x.kind === "syllabus" ? "selected" : ""}>Syllabus</option>
+          </select>
+          <button type="button" class="icon-btn" data-act="drop-remove" data-id="${x.id}" aria-label="Remove ${esc(x.file.name)}">×</button>`
+        : x.status === "reading" ? `<span class="drop-status"><span class="spinner" aria-hidden="true"></span>Reading</span>`
+        : x.status === "done" ? `<span class="drop-status ok">Read</span>`
+        : `<span class="drop-status bad">${esc(x.error)}</span>`}
+      </li>`).join("");
+    const n = drop.files.filter((x) => x.status === "ready").length;
+    const finished = drop.files.length && !drop.running && drop.files.every((x) => x.status === "done" || x.status === "error");
+    return `
+      <div class="card dropzone ${drop.over ? "over" : ""}" data-drop>
+        <h3>Upload them here</h3>
+        <p class="muted small">Drop your schedule screenshot and syllabus PDFs here, and we'll fill in your courses, class times and deadlines. You'll check everything before it's saved.</p>
+        ${drop.files.length ? `<ul class="drop-files">${rows}</ul>` : ""}
+        <div class="add-row">
+          ${drop.running ? "" : `<button type="button" class="btn small" data-act="drop-pick">${drop.files.length ? "Add more files" : "Choose files"}</button>`}
+          ${n && !drop.running ? `<button type="button" class="btn small primary" data-act="drop-go">Read ${n} file${n === 1 ? "" : "s"} and start</button>` : ""}
+          ${finished ? `<button type="button" class="btn small primary" data-act="drop-review">Review what we found</button>` : ""}
+          ${!drop.files.length ? `<span class="muted small drop-hint">or drag them onto this box</span>` : ""}
+        </div>
+      </div>`;
+  }
+
+  async function runDrop() {
+    if (Sync.enabled() && !Sync.user()) { Sync.open(); window.scrollTo(0, 0); return; }
+    // Syllabus dates need a term to work out the year; use the next one if none is set yet.
+    if (!P.term.classesStart) {
+      // The first term with more than 3 weeks of classes left (late in a term, students are planning the next one).
+      const soon = new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10);
+      const known = Terms.upcomingTerms().filter((x) => x.known);
+      const t = known.find((x) => x.classesEnd > soon) || known[known.length - 1];
+      if (t) P.term = { presetId: t.id, label: t.label, classesStart: t.classesStart, classesEnd: t.classesEnd, examStart: t.examStart, examEnd: t.examEnd, breaks: t.breaks.map((b) => Object.assign({}, b)) };
+    }
+    drop.running = true;
+    const todo = drop.files.filter((x) => x.status === "ready");
+    const work = async (x) => {
+      x.status = "reading"; render();
+      try {
+        const prepared = await Uploader.prepare([x.file], x.kind);
+        x.result = await Uploader.send(x.kind, prepared, P.term);
+        x.status = "done";
+      } catch (e) {
+        x.status = "error"; x.error = e.message;
+      }
+      render();
+    };
+    // Two at a time keeps it quick without tripping the upload limits.
+    const queue = todo.slice();
+    await Promise.all([0, 1].map(async () => { while (queue.length) await work(queue.shift()); }));
+    drop.running = false;
+    applyDrop();
+    render();
+  }
+
+  // Turn what was read into the usual review panels on each step.
+  function applyDrop() {
+    const timetables = drop.files.filter((x) => x.status === "done" && x.kind === "timetable" && !x.applied);
+    if (timetables.length) {
+      const courses = [], warnings = [];
+      timetables.forEach((x) => { courses.push(...x.result.courses); warnings.push(...x.result.warnings); x.applied = true; });
+      if (courses.length) pending.timetable = timetableReview({ courses, warnings });
+    }
+    drop.files.filter((x) => x.status === "done" && x.kind === "syllabus" && !x.applied).forEach((x) => {
+      x.applied = true;
+      const code = x.result.course_code ? normCode(x.result.course_code) : "";
+      if (!isCode(code)) { pending.unassigned.push({ id: x.id, name: x.file.name, result: x.result }); return; }
+      let c = P.courses.find((y) => y.code === code);
+      if (!c) {
+        c = { id: uid(), code, name: x.result.course_name || "", color: nextColor(), meetings: [], assessments: [] };
+        P.courses.push(c);
+      }
+      pending.syllabus[c.id] = syllabusReview(c.id, x.result);
+    });
+    persist();
+  }
+
+  function unassignedPanel() {
+    if (!pending.unassigned.length) return "";
+    return pending.unassigned.map((u) => `
+      <div class="card upload-card review">
+        <h3>Which course is this syllabus for?</h3>
+        <p class="muted small">We couldn't find a course code in <b>${esc(u.name)}</b>.</p>
+        <div class="add-row">
+          <select id="assign-${u.id}" aria-label="Course for ${esc(u.name)}">${P.courses.map((c) => `<option value="${c.id}">${esc(c.code)}</option>`).join("")}</select>
+          <button type="button" class="btn small primary" data-act="assign-syllabus" data-id="${u.id}" ${P.courses.length ? "" : "disabled"}>Use for this course</button>
+          <button type="button" class="btn small ghost" data-act="drop-unassigned" data-id="${u.id}">Discard</button>
+        </div>
+      </div>`).join("");
+  }
+
   function startUpload(kind, courseId) {
     if (Sync.enabled() && !Sync.user()) {
       // Uploads cost money to read, so they're limited per student and need an account.
@@ -434,17 +564,7 @@
       try {
         const prepared = await Uploader.prepare(files, kind);
         const result = await Uploader.send(kind, prepared, P.term);
-        const skip = new Set();
-        if (kind === "syllabus") {
-          const have = new Set(course(courseId).assessments.map((a) => (a.name || "").toLowerCase()));
-          result.assessments.forEach((a, i) => { if (have.has(a.name.toLowerCase())) skip.add(String(i)); });
-        } else {
-          result.courses.forEach((c, ci) => {
-            const ex = P.courses.find((x) => x.code === normCode(c.course_code));
-            c.meetings.forEach((m, mi) => { if (ex && ex.meetings.some((em) => sameMeeting(em, m))) skip.add(ci + ":" + mi); });
-          });
-        }
-        set({ status: "review", result, skip });
+        set(kind === "syllabus" ? syllabusReview(courseId, result) : timetableReview(result));
       } catch (e) {
         set({ status: "error", error: e.message });
       }
@@ -550,6 +670,7 @@
     return `
       <h2 tabindex="-1">What's due, and what's it worth?</h2>
       <p class="muted">Copy the graded work from each syllabus: name, due date and weight. Weights for each course should add up to 100%.</p>
+      ${unassignedPanel()}
       ${cards}`;
   }
 
@@ -752,6 +873,7 @@
 
   // ---------- actions ----------
   function go(step) {
+    if (step !== 1) dropNotice = false;
     P.step = Math.max(0, Math.min(step, STEPS.length - 1));
     persist();
     render();
@@ -849,6 +971,24 @@
       case "del-commit": P.routine.commitments = P.routine.commitments.filter((m) => m.id !== d.id); persist(); render(); break;
       case "style": P.study.style = d.id; persist(); render(); break;
       case "upload": startUpload(d.kind, d.c); break;
+      case "drop-pick": {
+        const input = document.getElementById("filePick");
+        input.accept = "application/pdf,image/*";
+        input.onchange = () => { const f = Array.from(input.files || []); input.value = ""; addDropFiles(f); };
+        input.click();
+        break;
+      }
+      case "drop-remove": drop.files = drop.files.filter((x) => x.id !== d.id); render(); break;
+      case "drop-go": runDrop(); break;
+      case "drop-review": dropNotice = true; drop.files = drop.files.filter((x) => x.status === "error"); go(1); break;
+      case "assign-syllabus": {
+        const u = pending.unassigned.find((x) => x.id === d.id);
+        const courseId = document.getElementById("assign-" + d.id).value;
+        pending.syllabus[courseId] = syllabusReview(courseId, u.result);
+        pending.unassigned = pending.unassigned.filter((x) => x.id !== d.id);
+        render(); break;
+      }
+      case "drop-unassigned": pending.unassigned = pending.unassigned.filter((x) => x.id !== d.id); render(); break;
       case "pick": {
         const st = d.kind === "timetable" ? pending.timetable : pending.syllabus[d.c];
         if (st.skip.has(d.k)) st.skip.delete(d.k); else st.skip.add(d.k);
@@ -936,6 +1076,7 @@
 
   app.addEventListener("change", (e) => {
     if (P.setupComplete && App.handle(e, P)) return;
+    if (e.target.dataset.act === "drop-kind") { const x = drop.files.find((f) => f.id === e.target.dataset.id); if (x) x.kind = e.target.value; return; }
     const d = e.target.dataset;
     if (!d.bind) return;
     // Times, dates and selects affect warnings elsewhere on the page.
@@ -959,6 +1100,23 @@
     }, 350);
   });
   app.addEventListener("input", (e) => { if (e.target.id === "newName") e.target.dataset.auto = ""; });
+
+  // Drag and drop onto the welcome-page dropbox.
+  const inDrop = (e) => e.target.closest && e.target.closest("[data-drop]");
+  document.addEventListener("dragover", (e) => {
+    if (!document.querySelector("[data-drop]")) return;
+    e.preventDefault(); // allow dropping (and stop the browser opening the file)
+    const over = !!inDrop(e);
+    if (over !== drop.over) { drop.over = over; const z = document.querySelector("[data-drop]"); if (z) z.classList.toggle("over", over); }
+  });
+  document.addEventListener("dragleave", (e) => { if (!e.relatedTarget && drop.over) { drop.over = false; const z = document.querySelector("[data-drop]"); if (z) z.classList.remove("over"); } });
+  document.addEventListener("drop", (e) => {
+    if (!document.querySelector("[data-drop]")) return;
+    e.preventDefault();
+    drop.over = false;
+    if (!drop.running && e.dataTransfer && e.dataTransfer.files.length) addDropFiles(e.dataTransfer.files);
+    else render();
+  });
 
   // Clear the course-code error as soon as they type again.
   app.addEventListener("keydown", (e) => {

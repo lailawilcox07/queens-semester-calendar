@@ -492,3 +492,15 @@ body:has(.timer-bar) .tabbar{top:auto; position:static;}
 .rem-list li{display:flex; gap:10px; font-size:13.5px; padding:4px 0; border-top:1px solid var(--line);}
 .rem-list .mono{color:var(--muted); min-width:62px; font-size:12.5px;}
 .rem-msg{margin:8px 0 0; color:var(--accent); font-weight:500;}
+
+/* welcome dropbox */
+.dropzone{border:2px dashed var(--line); background:var(--surface); transition:border-color .15s, background .15s;}
+.dropzone.over{border-color:var(--accent); background:var(--accent-tint);}
+.drop-files{list-style:none; padding:0; margin:8px 0 10px;}
+.drop-file{display:flex; align-items:center; gap:8px; padding:6px 0; border-top:1px solid var(--line); font-size:14px;}
+.drop-name{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.drop-file select{width:auto; flex:none; padding:6px 8px; min-height:36px; font-size:13px;}
+.drop-status{display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); flex:none; max-width:55%; text-align:right;}
+.drop-status.ok{color:var(--ok); font-weight:600;}
+.drop-status.bad{color:var(--error);}
+.drop-hint{align-self:center;}
