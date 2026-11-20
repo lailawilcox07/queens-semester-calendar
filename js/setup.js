@@ -159,9 +159,14 @@
     const scrollY = window.scrollY;
     const keepScroll = render._sameStep === P.step;
     render._sameStep = P.step;
-    if (P.setupComplete && P.step >= STEPS.length) app.innerHTML = renderDone();
+    // Keep focus on the same control across re-renders (e.g. tabbing through grades).
+    const a = document.activeElement;
+    const focusKey = a && a.dataset && (a.dataset.a || a.dataset.bind) ? `[data-${a.dataset.a ? "a" : "bind"}="${a.dataset.a || a.dataset.bind}"][data-id="${a.dataset.id || ""}"]` : null;
+    if (P.setupComplete && P.step >= STEPS.length) app.innerHTML = App.render(P) + renderFooter();
     else app.innerHTML = renderShell(STEPS[P.step].id);
     window.scrollTo(0, keepScroll ? scrollY : 0);
+    if (P.setupComplete && P.step >= STEPS.length) App.afterRender(app);
+    if (focusKey && keepScroll) { const el = app.querySelector(focusKey); if (el) el.focus({ preventScroll: true }); }
     if (!keepScroll) {
       const h = app.querySelector("h2");
       if (h) h.focus({ preventScroll: true });
@@ -219,6 +224,7 @@
         <p class="privacy"><b>Private by default.</b> No account needed. Everything you enter stays on this device.${Uploader.enabled() ? " If you upload a syllabus or timetable, it's sent to Claude, Anthropic's AI, to read it. This site doesn't keep a copy." : ""}</p>
         <p class="muted small">You can skip anything and come back to it later.</p>
         <button type="button" class="btn primary big" data-act="next">${resuming ? "Continue setup" : "Get started"}</button>
+        ${resuming ? "" : `<p><button type="button" class="link-btn" data-act="demo">Or try a demo with sample courses</button></p>`}
       </section>`;
   }
 
@@ -703,16 +709,8 @@
       <div class="card"><div class="sum-head"><h3>Deadlines</h3><button type="button" class="link-btn" data-act="edit" data-step="4">Edit</button></div>${deadlineList()}</div>`;
   }
 
-  function renderDone() {
+  function renderFooter() {
     return `
-      <section class="done">
-        <p class="eyebrow">${esc(P.term.label || "Your term")}</p>
-        <h2 tabindex="-1">You're all set up</h2>
-        <p class="lede">Your semester is saved on this device. The calendar, to-do list and grade tracker views will appear here next.</p>
-      </section>
-      ${summaryCards(true)}
-      <div class="card"><div class="sum-head"><h3>Your week</h3><button type="button" class="link-btn" data-act="edit" data-step="3">Edit</button></div>${weekPreview()}</div>
-      <div class="card"><div class="sum-head"><h3>Coming up</h3><button type="button" class="link-btn" data-act="edit" data-step="4">Edit</button></div>${deadlineList(8)}</div>
       <div class="reset">
         ${confirmingReset
           ? `<p>This deletes everything you've entered on this device.</p><button type="button" class="btn danger" data-act="reset-yes">Yes, start over</button> <button type="button" class="btn ghost" data-act="reset-no">Cancel</button>`
@@ -755,6 +753,7 @@
   });
 
   app.addEventListener("click", (e) => {
+    if (P.setupComplete && App.handle(e, P)) return;
     const b = e.target.closest("[data-act]");
     if (!b || b.disabled) return;
     const d = b.dataset;
@@ -828,6 +827,12 @@
       case "discard":
         if (d.kind === "timetable") pending.timetable = null; else delete pending.syllabus[d.c];
         render(); break;
+      case "demo":
+        // Load a sample student and jump to a day in the middle of their term.
+        P = JSON.parse(JSON.stringify(window.DEMO_PROFILE));
+        Store.saveNow(P);
+        location.search = "?today=2027-02-08";
+        break;
       case "reset": confirmingReset = true; render(); break;
       case "reset-no": confirmingReset = false; render(); break;
       case "reset-yes": confirmingReset = false; Store.clear(); P = Store.emptyProfile(); returnToReview = false; render(); break;
@@ -896,6 +901,7 @@
   });
 
   app.addEventListener("change", (e) => {
+    if (P.setupComplete && App.handle(e, P)) return;
     const d = e.target.dataset;
     if (!d.bind) return;
     // Times, dates and selects affect warnings elsewhere on the page.
@@ -925,6 +931,7 @@
     if (e.target.id === "newCode") { const err = document.getElementById("codeError"); if (err) err.hidden = true; }
   });
 
+  App.init({ save: () => persist(), rerender: () => render() });
   if (P.setupComplete) P.step = STEPS.length;
   render();
 })();

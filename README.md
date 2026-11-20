@@ -10,8 +10,15 @@ Everything a student enters is saved in their own browser. There are no accounts
 
 **Milestone 2: upload to autofill (built, needs backend setup).** Students can upload a SOLUS or Qflow timetable screenshot to fill in courses and class times, or a syllabus to fill in deadlines and weights. Claude reads the uploads through a Supabase Edge Function, and students review everything before it's added. See [supabase/SETUP.md](supabase/SETUP.md).
 
+**Milestone 3: the everyday app (done).** After setup, students get:
+- **Calendar**: each week of the term with real dates, classes (skipping reading week and holidays), commitments, one-time events, deadlines, and study blocks planned into free time around classes, travel and meals. A grid on laptops, a day list on phones.
+- **To-Do**: today's study blocks and anything due in the next 3 days, with a weekly study progress bar.
+- **Due**: every deadline grouped by week, filterable by course, marked Not started / Started / Done.
+- **Grades**: marks per assessment, a running average with the Queen's letter grade, and what's needed on the remaining work to reach a target grade.
+
+Try it with sample data: open the site and click "Or try a demo with sample courses". Add `?today=YYYY-MM-DD` to the address to view any day of the term.
+
 Coming next:
-- Calendar, To-Do, Due and Grades views built from the setup data
 - Optional accounts with sync across devices
 - Guide for adding the app to a phone's home screen
 - Push reminders
