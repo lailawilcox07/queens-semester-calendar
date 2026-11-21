@@ -132,6 +132,20 @@ async function claimUpload(req: Request, kind: string): Promise<{ status: number
   return { status: 200, error: "" };
 }
 
+// Gives the upload back when the file couldn't be read, so it doesn't count.
+async function releaseUpload(req: Request) {
+  if (Deno.env.get("SKIP_AUTH") === "1") return;
+  try {
+    const supa = createClient(Deno.env.get("SUPABASE_URL") || "", req.headers.get("apikey") || "", {
+      global: { headers: { Authorization: req.headers.get("Authorization") || "" } },
+      auth: { persistSession: false },
+    });
+    await supa.rpc("release_upload");
+  } catch (e) {
+    console.log("release_upload failed", String(e));
+  }
+}
+
 // Keep only well-formed values, so a bad model response can't put junk into the app.
 const isDate = (s: unknown) => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
 const isTime = (s: unknown) => typeof s === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(s);
@@ -221,11 +235,14 @@ Deno.serve(async (req) => {
         messages: [{ role: "user", content }],
       }),
     });
-  } catch {
+  } catch (e) {
+    console.log("Claude API unreachable", String(e));
+    await releaseUpload(req);
     return json({ error: "Couldn't reach the reader. Please try again." }, 502, cors);
   }
   if (!res.ok) {
-    console.log("Claude API error", res.status, await res.text().catch(() => ""));
+    console.log("Claude API error", res.status, MODEL, await res.text().catch(() => ""));
+    await releaseUpload(req);
     const msg = res.status === 429 || res.status === 529
       ? "The reader is busy right now. Please try again in a minute."
       : "Something went wrong reading that file. Please try again, or type it in.";
@@ -233,7 +250,7 @@ Deno.serve(async (req) => {
   }
   const data = await res.json();
   const call = arr(data.content).find((b) => b.type === "tool_use");
-  if (!call) return json({ error: "Couldn't find anything to fill in from that file." }, 422, cors);
+  if (!call) { await releaseUpload(req); return json({ error: "Couldn't find anything to fill in from that file." }, 422, cors); }
   const result = kind === "syllabus" ? cleanSyllabus(call.input || {}) : cleanTimetable(call.input || {});
   return json({ ok: true, kind, result }, 200, cors);
 });
