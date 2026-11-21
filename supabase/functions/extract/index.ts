@@ -215,9 +215,9 @@ Deno.serve(async (req) => {
     ? { type: "document", source: { type: "base64", media_type: f.type, data: f.data } }
     : { type: "image", source: { type: "base64", media_type: f.type, data: f.data } });
   const term = { start: isDate(body.termStart) ? body.termStart : "", end: isDate(body.termEnd) ? body.termEnd : "" };
+  const tool = kind === "syllabus" ? SYLLABUS_TOOL : TIMETABLE_TOOL;
   content.push({ type: "text", text: (kind === "syllabus" ? syllabusPrompt(term) : TIMETABLE_PROMPT) +
     `\n\nGive your answer by calling the ${tool.name} tool once. Don't reply with text.` });
-  const tool = kind === "syllabus" ? SYLLABUS_TOOL : TIMETABLE_TOOL;
 
   let res: Response;
   try {
