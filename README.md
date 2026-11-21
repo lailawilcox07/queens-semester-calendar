@@ -16,7 +16,7 @@ Everything a student enters is saved in their own browser. There are no accounts
 - **Due**: every deadline grouped by week, filterable by course, marked Not started / Started / Done.
 - **Grades**: marks per assessment, a running average with the Queen's letter grade, and what's needed on the remaining work to reach a target grade.
 
-Try it with sample data: open the site and click "Or try a demo with sample courses". Add `?today=YYYY-MM-DD` to the address to view any day of the term.
+Add `?preview&today=YYYY-MM-DD` to the address to view any day of the term.
 
 **Milestone 4: accounts and sync (built, needs backend setup).** Optional sign-in with a Queen's email (a code is emailed, no password). The semester syncs between devices through Supabase. Uploads need an account and are limited per student (20 a day, 40 a term by default). See [supabase/SETUP.md](supabase/SETUP.md).
 

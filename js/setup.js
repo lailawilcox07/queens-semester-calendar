@@ -21,6 +21,8 @@
   const COLORS = 8;
 
   let P = Store.load();
+  // The demo has been removed; clear a sample semester left over from it.
+  if (P.meta && P.meta.demo) { Store.clear(); P = Store.emptyProfile(); }
   let returnToReview = false;
   let confirmingReset = false;
   // Uploads being read or reviewed. Not saved: a review is finished in one sitting.
@@ -166,11 +168,11 @@
     if (renderWaiting) setTimeout(() => { if (renderWaiting) render(); }, 0);
   }, true);
 
-  // The demo opens on a set day (?today=...). Once a real semester is loaded
-  // (set up here, or pulled from the account), always use the real date.
+  // ?today=... is only for previews (?preview&today=...). Drop it otherwise,
+  // so an old demo address can't show the wrong day.
   function dropDemoDate() {
     const q = new URLSearchParams(location.search);
-    if (!q.has("today") || q.has("preview") || (P.meta && P.meta.demo)) return;
+    if (!q.has("today") || q.has("preview")) return;
     q.delete("today");
     const rest = q.toString();
     history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
@@ -255,7 +257,6 @@
         <p class="privacy"><b>Private by default.</b> No account needed. Everything you enter stays on this device.${Uploader.enabled() ? " If you upload a syllabus or timetable, it's sent to Claude, Anthropic's AI, to read it. This site doesn't keep a copy." : ""}</p>
         <p class="muted small">You can skip anything and come back to it later.</p>
         <button type="button" class="btn primary big" data-act="next">${resuming ? "Continue setup" : "Get started"}</button>
-        ${resuming ? "" : `<p><button type="button" class="link-btn" data-act="demo">Or try a demo with sample courses</button></p>`}
         ${Theme.pickerHTML()}
         ${Sync.enabled() && !Sync.user() ? `<p class="small muted">Already set up on another device? <button type="button" class="link-btn" data-s="open">Sign in</button></p>` : ""}
       </section>`;
@@ -1108,13 +1109,6 @@
       case "discard":
         if (d.kind === "timetable") pending.timetable = null; else delete pending.syllabus[d.c];
         render(); break;
-      case "demo":
-        // Load a sample student and jump to a day in the middle of their term.
-        P = JSON.parse(JSON.stringify(window.DEMO_PROFILE));
-        P.meta = { demo: true };
-        Store.saveNow(P);
-        location.search = "?today=2027-02-08";
-        break;
       case "reset": confirmingReset = true; render(); break;
       case "reset-no": confirmingReset = false; render(); break;
       case "reset-yes": confirmingReset = false; Store.clear(); P = Store.emptyProfile(); returnToReview = false; render(); break;

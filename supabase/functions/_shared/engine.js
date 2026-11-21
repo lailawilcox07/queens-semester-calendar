@@ -19,7 +19,7 @@
   const toTime = (min) => String(Math.floor(min / 60)).padStart(2, "0") + ":" + String(min % 60).padStart(2, "0");
 
   function localToday() {
-    // ?today=2027-02-10 lets you preview any day of the term (handy for demos).
+    // ?preview&today=2027-02-10 lets you preview any day of the term.
     const q = typeof location !== "undefined" && new URLSearchParams(location.search).get("today");
     if (q && /^\d{4}-\d{2}-\d{2}$/.test(q)) return q;
     const d = new Date();

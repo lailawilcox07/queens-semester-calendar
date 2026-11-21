@@ -154,4 +154,3 @@ If something fails:
 - When the app opens or comes back to the front, it checks the account. Whichever copy was changed most recently wins.
 - If someone edits on two devices while both are offline, the later edit replaces the earlier one. That's fine for a pilot.
 - Signing out removes the semester from that device. It stays in the account.
-- The demo is never saved to an account.
