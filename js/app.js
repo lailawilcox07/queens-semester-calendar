@@ -208,7 +208,7 @@
   function todoView(P, today) {
     const pr = progress(P);
     if (today < eng.termStart) {
-      return `<div class="card"><h3>Your term starts ${esc(relDays(eng.termStart, today))}</h3><p class="muted">Your daily study plan starts on ${esc(dateLabel(eng.termStart))}. Tip: add <span class="mono">?today=${esc(eng.termStart)}</span> to the address to preview a day in term.</p></div>`;
+      return `<div class="card"><h3>Your term starts ${esc(relDays(eng.termStart, today))}</h3><p class="muted">Your daily study plan starts on ${esc(dateLabel(eng.termStart))}. Tip: add <span class="mono">?preview&amp;today=${esc(eng.termStart)}</span> to the address to preview a day in term.</p></div>`;
     }
     const d = eng.day(today);
     const study = d.items.filter((i) => i.kind === "study");

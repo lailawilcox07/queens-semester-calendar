@@ -166,9 +166,20 @@
     if (renderWaiting) setTimeout(() => { if (renderWaiting) render(); }, 0);
   }, true);
 
+  // The demo opens on a set day (?today=...). Once a real semester is loaded
+  // (set up here, or pulled from the account), always use the real date.
+  function dropDemoDate() {
+    const q = new URLSearchParams(location.search);
+    if (!q.has("today") || q.has("preview") || (P.meta && P.meta.demo)) return;
+    q.delete("today");
+    const rest = q.toString();
+    history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
+  }
+
   function render() {
     if (pressing) { renderWaiting = true; return; }
     renderWaiting = false;
+    dropDemoDate();
     const scrollY = window.scrollY;
     const keepScroll = render._sameStep === P.step;
     render._sameStep = P.step;
