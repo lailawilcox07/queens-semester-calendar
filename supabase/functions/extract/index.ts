@@ -215,7 +215,8 @@ Deno.serve(async (req) => {
     ? { type: "document", source: { type: "base64", media_type: f.type, data: f.data } }
     : { type: "image", source: { type: "base64", media_type: f.type, data: f.data } });
   const term = { start: isDate(body.termStart) ? body.termStart : "", end: isDate(body.termEnd) ? body.termEnd : "" };
-  content.push({ type: "text", text: kind === "syllabus" ? syllabusPrompt(term) : TIMETABLE_PROMPT });
+  content.push({ type: "text", text: (kind === "syllabus" ? syllabusPrompt(term) : TIMETABLE_PROMPT) +
+    `\n\nGive your answer by calling the ${tool.name} tool once. Don't reply with text.` });
   const tool = kind === "syllabus" ? SYLLABUS_TOOL : TIMETABLE_TOOL;
 
   let res: Response;
@@ -231,7 +232,8 @@ Deno.serve(async (req) => {
         model: MODEL,
         max_tokens: 4096,
         tools: [tool],
-        tool_choice: { type: "tool", name: tool.name },
+        // This model doesn't accept a forced tool, so we let it choose and tell it to call ours.
+        tool_choice: { type: "auto" },
         messages: [{ role: "user", content }],
       }),
     });
