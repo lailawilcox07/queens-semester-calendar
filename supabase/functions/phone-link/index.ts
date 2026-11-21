@@ -1,7 +1,7 @@
 // Supabase Edge Function: makes a one-time sign-in code for the QR code shown
 // on a laptop, so scanning it on a phone opens the student's semester already
 // signed in. Only a signed-in student can ask, and only for their own account.
-// The code works once and expires (Authentication → Email OTP expiration).
+// Also returns a 6-digit code to type in. The code works once and expires (Authentication → Email OTP expiration).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders, json, originAllowed, validApiKey } from "../_shared/http.ts";
@@ -43,5 +43,7 @@ Deno.serve(async (req) => {
     console.log("generateLink failed", error?.message);
     return json({ error: "Couldn't make a sign-in code." }, 500, cors);
   }
-  return json({ ok: true, hash }, 200, cors);
+  // The same link also has a 6-digit code, for typing into the home-screen app
+  // (which on iPhone doesn't share sign-ins with Safari).
+  return json({ ok: true, hash, code: data?.properties?.email_otp || "", email: who.user.email }, 200, cors);
 });

@@ -48,6 +48,7 @@
           <li>${ICON.more}<span>Tap <b>⋯</b> next to the address bar, then <b>Share</b>. <span class="muted">On older iPhones, tap the Share button ${ICON.share} at the bottom of the screen.</span></span></li>
           <li>${ICON.add}<span>Scroll down and tap <b>Add to Home Screen</b>. You may need to tap <b>View More</b> first.</span></li>
           <li><span>Leave <b>Open as Web App</b> turned on, then tap <b>Add</b>.</span></li>
+          <li><span>Open it from your home screen. iPhone keeps it separate from Safari, so <b>sign in again</b> there. The quickest way is a code from your laptop: open <b>Add to your phone</b> on your laptop while signed in.</span></li>
         </ol>`;
     }
     if (p === "android") {
@@ -63,18 +64,29 @@
     const signedIn = syncOn && Sync.user();
     return `
       <div class="guide-desktop">
-        <div id="qrBox" class="qr-box" aria-live="polite">${qrSvg(siteUrl())}</div>
+        <div id="qrBox" class="qr-box" aria-live="polite">${qrSvg(linkFor && Date.now() - linkFor.at < 5 * 60e3 ? linkFor.url : siteUrl())}</div>
         <div>
           <p><b>Scan this with your phone's camera.</b></p>
           <p class="muted small">${!syncOn ? "It opens Semester Calendar on your phone. Your semester is saved on this computer only for now, so you'd set it up again there."
             : signedIn ? "It opens your semester on your phone, already signed in, with everything you've set up. The code works once, so reopen this to get a new one."
             : "It opens Semester Calendar on your phone. Sign in on both devices with the same email to see the same semester."} Then follow the steps on your phone to add it to your home screen.</p>
+          <div id="phoneCode">${codeHTML()}</div>
           ${deferred ? `<p class="small">You can also add it to this computer: <button type="button" class="link-btn" data-i="prompt">Install on this computer</button></p>` : ""}
         </div>
       </div>`;
   }
 
+  const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const siteUrl = () => location.origin + location.pathname;
+
+  // On iPhone the home-screen app doesn't share sign-ins with Safari, so
+  // also show a code the student can type into the app once it's added.
+  function codeHTML() {
+    if (!linkFor || !linkFor.code || Date.now() - linkFor.at > 5 * 60e3) return "";
+    return `<p class="small phone-code-line">Already added it to your home screen? Open it, tap <b>Sign in to sync</b> → <b>Have a code from your laptop?</b> and enter:</p>
+      <p class="phone-code"><span class="muted small">${esc(linkFor.email)}</span><b>${esc(linkFor.code)}</b></p>
+      <p class="small muted">The QR code and this code work once between them. <button type="button" class="link-btn" data-i="newcode">Get a new one</button></p>`;
+  }
   function qrSvg(text) {
     if (!root.qrcode) return `<img src="assets/qr-site.svg" alt="QR code for the site" width="140" height="140">`;
     const q = root.qrcode(0, "M");
@@ -84,16 +96,21 @@
   }
 
   // Signed in on a laptop: swap in a QR code that signs the phone in too.
-  let linkFor = null;
+  let linkFor = null, fetching = false;
   async function afterRender() {
     const box = document.getElementById("qrBox");
     if (!box || !(root.Sync && Sync.user())) return;
-    if (linkFor && Date.now() - linkFor.at < 5 * 60e3) { box.innerHTML = qrSvg(linkFor.url); return; }
-    const hash = await Sync.phoneLink();
-    if (!hash) return; // keep the plain QR code
-    linkFor = { url: siteUrl() + "?signin=" + encodeURIComponent(hash), at: Date.now() };
+    if (linkFor && Date.now() - linkFor.at < 5 * 60e3) return;
+    if (fetching) return;
+    fetching = true;
+    const link = await Sync.phoneLink();
+    fetching = false;
+    if (!link || !link.hash) return; // keep the plain QR code
+    linkFor = { url: siteUrl() + "?signin=" + encodeURIComponent(link.hash), code: link.code, email: link.email, at: Date.now() };
     const again = document.getElementById("qrBox");
     if (again) again.innerHTML = qrSvg(linkFor.url);
+    const code = document.getElementById("phoneCode");
+    if (code) code.innerHTML = codeHTML();
   }
 
   // The card shown at the top of the app, and from the "Add to your phone" link.
@@ -125,6 +142,7 @@
     if (!el) return false;
     switch (el.dataset.i) {
       case "open": open = true; linkFor = null; break;
+      case "newcode": linkFor = null; break;
       case "close": open = false; state.dismissed = true; save(); break;
       case "dismiss": state.dismissed = true; save(); break;
       case "prompt":

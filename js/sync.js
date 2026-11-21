@@ -17,7 +17,7 @@
   let lastSync = 0;
   let pushTimer = null;
   let hooks = null; // { getProfile, replace(profile), clearLocal(), rerender() }
-  const panel = { open: false, step: "email", email: "", error: "", busy: false, remote: null, confirmOut: false };
+  const panel = { open: false, step: "email", email: "", error: "", busy: false, remote: null, confirmOut: false, laptop: false };
 
   function loadLib() {
     if (root.supabase && root.supabase.createClient) return Promise.resolve();
@@ -198,6 +198,16 @@
           ? `<p class="small">Signing out removes your semester from this device. It stays saved in your account.</p>
              <div class="add-row"><button type="button" class="btn danger small" data-s="signout-yes">Sign out</button><button type="button" class="btn small ghost" data-s="signout-no">Cancel</button></div>`
           : `<div class="add-row"><button type="button" class="btn small" data-s="sync-now">Sync now</button><button type="button" class="btn small ghost" data-s="signout">Sign out</button><button type="button" class="btn small ghost" data-s="close">Close</button></div>`}`;
+    } else if (panel.step === "code" && panel.laptop) {
+      body = `
+        <h3>Sign in with a code from your laptop</h3>
+        <p class="muted small">On your laptop, signed in, click <b>Add to your phone</b>. Enter the email and 6-digit code shown there.</p>
+        <form data-s-form="code" class="acct-form acct-form-stack" autocomplete="off">
+          <input id="acctEmail" type="email" autocomplete="email" placeholder="you@${esc(domain())}" value="${esc(panel.email)}" aria-label="Queen's email" required>
+          <input id="acctCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" aria-label="6-digit code" required>
+          <button type="submit" class="btn primary small" ${panel.busy ? "disabled" : ""}>${panel.busy ? "Checking…" : "Sign in"}</button>
+        </form>${err}
+        <div class="add-row"><button type="button" class="link-btn" data-s="back">Get a code by email instead</button></div>`;
     } else if (panel.step === "code") {
       body = `
         <h3>Check your email</h3>
@@ -215,7 +225,7 @@
           <input id="acctEmail" type="email" autocomplete="email" placeholder="you@${esc(domain())}" value="${esc(panel.email)}" aria-label="Queen's email" required>
           <button type="submit" class="btn primary small" ${panel.busy ? "disabled" : ""}>${panel.busy ? "Sending…" : "Send code"}</button>
         </form>${err}
-        <button type="button" class="link-btn muted" data-s="close">Not now</button>`;
+        <div class="add-row"><button type="button" class="link-btn" data-s="laptop">Have a code from your laptop?</button><button type="button" class="link-btn muted" data-s="close">Not now</button></div>`;
     }
     return `<div class="card acct-panel" role="region" aria-label="Account">${body}</div>`;
   }
@@ -231,17 +241,25 @@
     panel.email = email; panel.busy = true; panel.error = ""; hooks.rerender();
     const { error } = await sb.auth.signInWithOtp({ email, options: { shouldCreateUser: true, emailRedirectTo: location.origin + location.pathname } });
     panel.busy = false;
-    if (error) panel.error = error.message && /rate|seconds/i.test(error.message) ? "Please wait a minute before asking for another code." : "Couldn't send the code. Check the address and try again.";
-    else panel.step = "code";
+    if (!error) { panel.step = "code"; panel.laptop = false; return; }
+    const msg = error.message || "";
+    panel.error = /seconds/i.test(msg) ? "Please wait a minute before asking for another code."
+      : /rate|limit/i.test(msg) || error.status === 429 ? "Too many sign-in emails were sent just now. Try again later, or use a code from your laptop."
+      : "Couldn't send the code. Check the address and try again.";
   }
 
-  async function verify(code) {
+  async function verify(code, email) {
+    if (email !== undefined) {
+      email = email.trim().toLowerCase();
+      if (!new RegExp("@" + domain().replace(/\./g, "\\.") + "$").test(email)) { panel.error = `Use your Queen's email (@${domain()}).`; return; }
+      panel.email = email;
+    }
     panel.busy = true; panel.error = ""; hooks.rerender();
     const { data, error } = await sb.auth.verifyOtp({ email: panel.email, token: code.trim(), type: "email" });
     panel.busy = false;
     if (error || !data || !data.user) { panel.error = "That code didn't work. Check it, or send a new one."; return; }
     user = data.user;
-    panel.open = false; panel.step = "email";
+    panel.open = false; panel.step = "email"; panel.laptop = false;
     await pull();
   }
 
@@ -252,7 +270,7 @@
       if (!f) return false;
       e.preventDefault();
       if (f.dataset.sForm === "email") await sendCode(document.getElementById("acctEmail").value);
-      else await verify(document.getElementById("acctCode").value);
+      else await verify(document.getElementById("acctCode").value, panel.laptop ? document.getElementById("acctEmail").value : undefined);
       hooks.rerender();
       if (panel.step === "code" && !panel.error) { const c = document.getElementById("acctCode"); if (c) c.focus(); }
       return true;
@@ -262,7 +280,8 @@
     switch (el.dataset.s) {
       case "open": panel.open = !panel.open; panel.error = ""; panel.confirmOut = false; break;
       case "close": panel.open = false; break;
-      case "back": panel.step = "email"; panel.error = ""; break;
+      case "back": panel.step = "email"; panel.laptop = false; panel.error = ""; break;
+      case "laptop": panel.step = "code"; panel.laptop = true; panel.error = ""; break;
       case "resend": await sendCode(panel.email); break;
       case "sync-now": await pull(); break;
       case "signout": panel.confirmOut = true; break;
@@ -295,7 +314,7 @@
     await pull();
   }
 
-  // A one-time sign-in code for the QR code on the laptop (see phone-link function).
+  // A one-time sign-in for the phone: a QR link plus a 6-digit code (see phone-link function).
   async function phoneLink() {
     const token = await accessToken();
     if (!token) return null;
@@ -306,7 +325,7 @@
         body: "{}",
       });
       const body = await res.json();
-      return body && body.ok ? body.hash : null;
+      return body && body.ok ? body : null;
     } catch (e) {
       return null;
     }
