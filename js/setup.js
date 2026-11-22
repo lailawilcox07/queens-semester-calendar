@@ -248,7 +248,7 @@
         <div class="card ready">
           <h3>Before you start, grab these</h3>
           <ol>
-            <li><b>Your class schedule from MySOLUS.</b> ${Uploader.enabled() ? "Take a screenshot of your weekly schedule. You can upload it and we'll fill in your classes." : "You'll copy your class times from it."}</li>
+            <li><b>Your class schedule from MySOLUS.</b> ${Uploader.enabled() ? "Save it as a PDF (View My Classes) or take a screenshot of your weekly schedule. You can upload it and we'll fill in your classes." : "You'll copy your class times from it."}</li>
             <li><b>The syllabus for each course from onQ.</b> ${Uploader.enabled() ? "Download each one as a PDF. You can upload them and we'll fill in your deadlines and weights." : "You'll copy the deadlines and weights from them."}</li>
           </ol>
           <p class="muted small">Setup is easiest on a laptop.</p>
@@ -375,14 +375,14 @@
     const btn = (label) => `<button type="button" class="btn small" data-act="upload" data-kind="timetable">${label}</button>`;
     if (!st) return `
       <div class="card upload-card">
-        <h3>Have a screenshot of your timetable?</h3>
-        <p class="muted small">Upload a screenshot from SOLUS or Qflow and we'll fill in your courses and class times. You'll check everything before it's added.</p>
-        ${btn("Upload timetable screenshot")}
+        <h3>Have your class schedule?</h3>
+        <p class="muted small">Upload your MySOLUS schedule (a PDF or a screenshot) or a Qflow screenshot and we'll fill in your courses and class times. You'll check everything before it's added.</p>
+        ${btn("Upload class schedule")}
       </div>`;
     if (st.status === "loading") return `<div class="card upload-card">${spinner("Reading your timetable. This can take a little while.")}</div>`;
     if (st.status === "error") return `<div class="card upload-card"><div class="alert warn">${esc(st.error)}</div>${btn("Try again")} <button type="button" class="btn small ghost" data-act="discard" data-kind="timetable">Cancel</button></div>`;
     const r = st.result;
-    if (!r.courses.length) return `<div class="card upload-card"><div class="alert warn">We couldn't find any classes in that image. Try a clearer screenshot of the weekly view, or type them in below.</div>${warnList(r.warnings)}${btn("Try another screenshot")} <button type="button" class="btn small ghost" data-act="discard" data-kind="timetable">Cancel</button></div>`;
+    if (!r.courses.length) return `<div class="card upload-card"><div class="alert warn">We couldn't find any classes in that file. Try the PDF from MySOLUS or a clearer screenshot of the weekly view, or type them in below.</div>${warnList(r.warnings)}${btn("Try another screenshot")} <button type="button" class="btn small ghost" data-act="discard" data-kind="timetable">Cancel</button></div>`;
     let n = 0;
     const groups = r.courses.map((c, ci) => {
       const existing = P.courses.find((x) => x.code === normCode(c.course_code));
@@ -470,8 +470,10 @@
   function addDropFiles(list) {
     Array.from(list || []).forEach((f) => {
       if (!isPdf(f) && !/^image\//.test(f.type) && !/\.(heic|heif|png|jpe?g|webp)$/i.test(f.name)) return;
-      // Guess: PDFs are syllabi; the first image is the schedule screenshot.
-      const kind = isPdf(f) ? "syllabus" : drop.files.some((x) => x.kind === "timetable") ? "syllabus" : "timetable";
+      // Guess from the name first ("View My Classes.pdf" from MySOLUS is the schedule).
+      // Otherwise PDFs are syllabi, and the first image is the schedule screenshot.
+      const looksLikeSchedule = /my\s*classes|schedule|timetable|solus|qflow/i.test(f.name) && !/syllab|outline/i.test(f.name);
+      const kind = looksLikeSchedule ? "timetable" : isPdf(f) ? "syllabus" : drop.files.some((x) => x.kind === "timetable") ? "syllabus" : "timetable";
       drop.files.push({ id: uid(), file: f, kind, status: "ready", error: "" });
     });
     render();
@@ -483,7 +485,7 @@
       <li class="drop-file st-${x.status}">
         <span class="drop-name">${esc(x.file.name)}</span>
         ${x.status === "ready" ? `<select data-act="drop-kind" data-id="${x.id}" aria-label="What is ${esc(x.file.name)}?">
-            <option value="timetable" ${x.kind === "timetable" ? "selected" : ""} ${isPdf(x.file) ? "disabled" : ""}>MySOLUS schedule</option>
+            <option value="timetable" ${x.kind === "timetable" ? "selected" : ""}>MySOLUS schedule</option>
             <option value="syllabus" ${x.kind === "syllabus" ? "selected" : ""}>Syllabus</option>
           </select>
           <button type="button" class="icon-btn" data-act="drop-remove" data-id="${x.id}" aria-label="Remove ${esc(x.file.name)}">×</button>`
@@ -496,7 +498,7 @@
     return `
       <div class="card dropzone ${drop.over ? "over" : ""}" data-drop>
         <h3>Upload them here</h3>
-        <p class="muted small">Drop your schedule screenshot and syllabus PDFs here, and we'll fill in your courses, class times and deadlines. You'll check everything before it's saved.</p>
+        <p class="muted small">Drop your MySOLUS schedule and syllabus PDFs here, and we'll fill in your courses, class times and deadlines. You'll check everything before it's saved.</p>
         ${drop.files.length ? `<ul class="drop-files">${rows}</ul>` : ""}
         <div class="add-row">
           ${drop.running ? "" : `<button type="button" class="btn small" data-act="drop-pick">${drop.files.length ? "Add more files" : "Choose files"}</button>`}
@@ -623,7 +625,7 @@
       return;
     }
     const input = document.getElementById("filePick");
-    input.accept = kind === "timetable" ? "image/*" : "application/pdf,image/*";
+    input.accept = "application/pdf,image/*";
     input.onchange = async () => {
       const files = Array.from(input.files || []);
       input.value = "";

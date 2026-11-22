@@ -40,8 +40,7 @@
     for (const f of files) {
       const isPdf = f.type === "application/pdf" || /\.pdf$/i.test(f.name);
       if (isPdf) {
-        if (kind === "timetable") throw new Error("Upload a screenshot of your timetable, not a PDF.");
-        if (f.size > MAX_PDF_BYTES) throw new Error(`${f.name} is over 8 MB. Try a smaller version of the syllabus.`);
+        if (f.size > MAX_PDF_BYTES) throw new Error(`${f.name} is over 8 MB. Try a smaller version${kind === "timetable" ? "" : " of the syllabus"}.`);
         out.push({ type: "application/pdf", data: await toBase64(f), name: f.name });
       } else if (/^image\//.test(f.type) || /\.(heic|heif|png|jpe?g|webp)$/i.test(f.name)) {
         out.push(await shrinkImage(f));

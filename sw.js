@@ -1,7 +1,7 @@
 // Service worker: lets the app open offline and makes it installable.
 // Pages and code are fetched fresh when online (so updates show up right
 // away) and served from the cache when offline.
-const CACHE = "semester-v12";
+const CACHE = "semester-v13";
 const SHELL = [
   "./", "index.html", "styles.css", "manifest.webmanifest",
   "js/theme.js", "js/config.js", "js/terms.js", "js/store.js", "js/upload.js", "js/engine.js",
