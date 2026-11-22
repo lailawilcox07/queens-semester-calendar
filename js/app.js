@@ -175,12 +175,15 @@
     if (ui.dueCourse !== "all") list = list.filter((d) => d.course.id === ui.dueCourse);
     const hiddenDone = list.filter((d) => pr.done[d.id]).length;
     if (!ui.showDone) list = list.filter((d) => !pr.done[d.id]);
+    const since = pr.since || today;
     const groups = [
-      { name: "Overdue", test: (d) => d.due && d.due < today },
+      { name: "Overdue", test: (d) => d.due && d.due < today && d.due >= since },
       { name: "This week", test: (d) => d.due && d.due >= today && E().daysBetween(today, d.due) <= 6 },
       { name: "Next week", test: (d) => d.due && E().daysBetween(today, d.due) >= 7 && E().daysBetween(today, d.due) <= 13 },
       { name: "Later", test: (d) => d.due && E().daysBetween(today, d.due) >= 14 },
       { name: "Date not set", test: (d) => !d.due },
+      // Due before the student started using the app: probably handed in already.
+      { name: "Before you started", test: (d) => d.due && d.due < since, earlier: true },
     ];
     const label = { todo: "Not started", started: "Started", done: "Done" };
     const row = (d) => {
@@ -188,7 +191,7 @@
       return `<li class="due-row c${d.course.color} st-${st}">
         <span class="dot"></span>
         <span class="due-main"><span><b>${esc(d.course.code)}</b> ${esc(d.a.name || d.a.type)}</span>
-          <span class="due-meta">${d.due ? `${esc(dateLabel(d.due))} · ${esc(relDays(d.due, today))}` : esc(d.a.note || "Date not set yet")}</span></span>
+          <span class="due-meta">${d.due ? `${esc(dateLabel(d.due))}${d.due >= since ? ` · ${esc(relDays(d.due, today))}` : ""}` : esc(d.a.note || "Date not set yet")}</span></span>
         <span class="due-weight mono">${d.a.weight !== "" && d.a.weight != null ? esc(d.a.weight) + "%" : ""}</span>
         <button type="button" class="status-btn st-${st}" data-a="cycle" data-id="${d.id}" aria-label="${esc(d.a.name)}: ${label[st]}. Change status.">${label[st]}</button>
       </li>`;
@@ -196,7 +199,7 @@
     const body = groups.map((g) => {
       const items = list.filter(g.test);
       if (!items.length) return "";
-      return `<section class="due-group ${g.name === "Overdue" ? "overdue" : ""}"><h3>${g.name} <span class="muted small">${items.length}</span></h3><ul class="due-rows">${items.map(row).join("")}</ul></section>`;
+      return `<section class="due-group ${g.name === "Overdue" ? "overdue" : ""} ${g.earlier ? "earlier" : ""}"><h3>${g.name} <span class="muted small">${items.length}</span></h3>${g.earlier ? `<p class="muted small">Mark these done once they're handed in, or enter your mark on the Grades tab.</p>` : ""}<ul class="due-rows">${items.map(row).join("")}</ul></section>`;
     }).join("");
     const filters = `<div class="filters"><button type="button" class="chip ${ui.dueCourse === "all" ? "on" : ""}" data-a="due-course" data-id="all">All</button>${P.courses.map((c) => `<button type="button" class="chip c${c.color} ${ui.dueCourse === c.id ? "on" : ""}" data-a="due-course" data-id="${c.id}"><span class="dot"></span>${esc(c.code)}</button>`).join("")}</div>`;
     return `${filters}
@@ -225,7 +228,8 @@
       <select id="freeCourse">${P.courses.map((c) => `<option value="${c.id}">${esc(c.code)}</option>`).join("")}</select></label>
       <button type="button" class="btn small" data-a="t-start-free">Start timer</button></div>`;
 
-    const soon = eng.deadlines().filter((x) => x.due && !pr.done[x.id] && E().daysBetween(today, x.due) <= 3);
+    const since = pr.since || today;
+    const soon = eng.deadlines().filter((x) => x.due && !pr.done[x.id] && x.due >= since && E().daysBetween(today, x.due) <= 3 && E().daysBetween(today, x.due) >= -7);
     const dueRows = soon.map((x) => `
       <label class="todo-row c${x.course.color} ${x.due < today ? "late" : ""}">
         <input type="checkbox" data-a="due-done" data-id="${x.id}">
@@ -489,10 +493,26 @@
     }).join("") + `<p class="muted small">Letter grades use the Queen's grading scale. Your syllabus decides how marks are combined, so check it for drop-the-lowest rules or alternative grading schemes.</p>`;
   }
 
+  // Once the term's exams are over, offer to set up the next one.
+  function termOverCard(P, today) {
+    if (!eng.termEnd || today <= eng.termEnd) return "";
+    const next = Terms.upcomingTerms(new Date(today + "T12:00:00")).find((t) => t.label !== P.term.label);
+    return `<div class="card term-over">
+      <h3>${esc(P.term.label || "Your term")} is over</h3>
+      <p class="muted small">Start your next term. Your routine, weekly commitments and study settings carry over; courses and deadlines start fresh. Your marks from this term stay on the Grades tab until you do.</p>
+      <button type="button" class="btn primary small" data-act="next-term">Set up ${esc(next ? next.label : "the next term")}</button>
+    </div>`;
+  }
+
   // ---------- shell ----------
   function render(P) {
     const pr = progress(P);
-    if (!pr.since) { pr.since = E().localToday(); ctx.save(); }
+    if (!pr.since) {
+      const now = new Date();
+      pr.since = E().localToday();
+      pr.sinceMin = now.getHours() * 60 + now.getMinutes();
+      ctx.save();
+    }
     eng = E().create(P);
     // Lock in the plan for any days that have passed, so they never change.
     const newlyPast = eng.unlockedPast();
@@ -516,6 +536,7 @@
         <p class="eyebrow">${esc(P.term.label || "Your term")} · ${P.courses.map((c) => esc(c.code)).join(" · ")}</p>
         <button type="button" class="link-btn" data-act="edit" data-step="7">Edit setup</button>
       </header>
+      ${termOverCard(P, today)}
       ${timerBar(P)}
       ${nowStrip(P, today)}
       <nav class="tabbar" role="tablist">${tabs.map(([id, l]) => `<button type="button" role="tab" aria-selected="${ui.tab === id}" class="${ui.tab === id ? "active" : ""}" data-a="tab" data-id="${id}">${l}</button>`).join("")}</nav>

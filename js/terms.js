@@ -27,12 +27,14 @@
   // becomes Fall 2027 then Winter 2028.
   function upcomingTerms(today) {
     today = today || new Date();
-    const iso = (d) => d.toISOString().slice(0, 10);
+    const iso = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
     const y = today.getFullYear();
     const all = [];
     for (let year = y - 1; year <= y + 1; year++) {
-      all.push({ id: "F" + year, label: "Fall " + year, ends: year + "-12-31" });
-      all.push({ id: "W" + year, label: "Winter " + year, ends: year + "-04-30" });
+      // A term drops off the list once its exams are over (or at the end of
+      // December/April when the dates aren't known yet).
+      all.push({ id: "F" + year, label: "Fall " + year, ends: (KNOWN["F" + year] || {}).examEnd || year + "-12-31" });
+      all.push({ id: "W" + year, label: "Winter " + year, ends: (KNOWN["W" + year] || {}).examEnd || year + "-04-30" });
     }
     return all
       .filter((t) => t.ends >= iso(today))

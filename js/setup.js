@@ -264,7 +264,7 @@
 
   function stepTerm() {
     const t = P.term;
-    const presets = Terms.upcomingTerms().map((p) => `
+    const presets = Terms.upcomingTerms(new Date(Engine.localToday() + "T12:00:00")).map((p) => `
       <button type="button" class="choice ${t.presetId === p.id ? "on" : ""}" data-act="preset" data-id="${p.id}" aria-pressed="${t.presetId === p.id}">
         <span class="choice-title">${esc(p.label)}</span>
         <span class="choice-sub">${p.known ? `Classes ${esc(fmtDate(p.classesStart))} – ${esc(fmtDate(p.classesEnd))}` : "Dates not published yet. You'll enter them."}</span>
@@ -513,7 +513,7 @@
     if (!P.term.classesStart) {
       // The first term with more than 3 weeks of classes left (late in a term, students are planning the next one).
       const soon = new Date(Date.now() + 21 * 864e5).toISOString().slice(0, 10);
-      const known = Terms.upcomingTerms().filter((x) => x.known);
+      const known = Terms.upcomingTerms(new Date(Engine.localToday() + "T12:00:00")).filter((x) => x.known);
       const t = known.find((x) => x.classesEnd > soon) || known[known.length - 1];
       if (t) P.term = { presetId: t.id, label: t.label, classesStart: t.classesStart, classesEnd: t.classesEnd, examStart: t.examStart, examEnd: t.examEnd, breaks: t.breaks.map((b) => Object.assign({}, b)) };
     }
@@ -1016,7 +1016,7 @@
         if (d.id === "custom") {
           P.term = Object.assign({}, P.term, { presetId: "custom", label: P.term.presetId === "custom" ? P.term.label : "" });
         } else {
-          const p = Terms.upcomingTerms().find((x) => x.id === d.id);
+          const p = Terms.upcomingTerms(new Date(Engine.localToday() + "T12:00:00")).find((x) => x.id === d.id);
           P.term = { presetId: p.id, label: p.label, classesStart: p.classesStart, classesEnd: p.classesEnd, examStart: p.examStart, examEnd: p.examEnd, breaks: p.breaks.map((x) => Object.assign({}, x)) };
         }
         persist(); render(); break;
@@ -1109,6 +1109,19 @@
       case "discard":
         if (d.kind === "timetable") pending.timetable = null; else delete pending.syllabus[d.c];
         render(); break;
+      case "next-term": {
+        // Keep the routine and settings; start courses, deadlines and progress fresh.
+        const keep = { routine: P.routine, study: P.study, prefs: P.prefs, reminders: P.reminders };
+        const today = Engine.localToday();
+        P = Object.assign(Store.emptyProfile(), JSON.parse(JSON.stringify(keep)));
+        P.routine.oneoffs = (P.routine.oneoffs || []).filter((o) => o.date && o.date >= today);
+        P.step = 1;
+        returnToReview = false;
+        Store.saveNow(P);
+        render();
+        window.scrollTo(0, 0);
+        break;
+      }
       case "reset": confirmingReset = true; render(); break;
       case "reset-no": confirmingReset = false; render(); break;
       case "reset-yes": confirmingReset = false; Store.clear(); P = Store.emptyProfile(); returnToReview = false; render(); break;

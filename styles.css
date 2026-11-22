@@ -560,3 +560,7 @@ html[data-theme="lavender"][data-mode="dark"]{ --bg:#15141B; --surface:#1D1B25; 
 .theme-btn.on{border-color:var(--accent); box-shadow:0 0 0 1px var(--accent);}
 .theme-sw{width:18px; height:18px; border-radius:50%; border:2px solid var(--surface); box-shadow:0 0 0 1px var(--line); flex:none;}
 .theme-label{font-size:12px; color:var(--muted); text-align:center; margin:16px 0 0;}
+
+.due-group.earlier h3{color:var(--muted);}
+.due-group.earlier .due-row{opacity:.8;}
+.term-over{border-left:4px solid var(--accent);}

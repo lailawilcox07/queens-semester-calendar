@@ -191,7 +191,7 @@
       for (let k = 1; k <= 7; k++) {
         const iso = addDays(today, -k);
         if (iso < since) break;
-        const planned = (locked[iso] || []).filter((b) => b.courseId === c.id).reduce((s, b) => s + blockMinutes(b), 0);
+        const planned = (locked[iso] || []).filter((b) => b.courseId === c.id && !(iso === since && progress.sinceMin != null && toMin(b.end) <= progress.sinceMin)).reduce((s, b) => s + blockMinutes(b), 0);
         m += Math.max(0, planned - actualMinutes(c.id, iso));
       }
       return (missedCache[c.id] = m);
@@ -220,7 +220,7 @@
 
     function blockLabel(c, iso) {
       const next = nextFor(c, iso);
-      return !next ? "Review this week's material"
+      return !next ? (t.classesEnd && iso > t.classesEnd ? "Exam review" : "Review this week's material")
         : next.due === iso ? `Finish ${next.name || next.type} (due today)`
         : `Prep for ${next.name || next.type} (${shortDate(next.due)})`;
     }
@@ -228,6 +228,10 @@
     // ---------- scheduling ----------
     // Fill the given days with study blocks: `goal` minutes in total, shared out
     // by free time, choosing a course for each block by priority.
+    // At most this much study on one day, so missed time doesn't pile up into a
+    // 10-hour day at the end of the week: 1.75x the daily average, at least 3 h.
+    const dayCap = Math.max(180, Math.round((Number(P.study.weeklyHours) || 0) * 60 / 7 * 1.75 / 15) * 15);
+
     function schedule(dates, goal, used) {
       const plan = {};
       const blocks = {};
@@ -235,6 +239,8 @@
       dates.forEach((iso) => {
         blocks[iso] = [];
         freeRanges(iso).forEach(([s, e]) => {
+          // On the day they set up, only plan from when they finished setting up.
+          if (iso === since && progress.sinceMin != null) s = Math.max(s, progress.sinceMin + 15);
           let cur = Math.ceil(s / 15) * 15; // start on :00, :15, :30 or :45
           while (e - cur >= STUDY.minBlock) {
             const len = Math.floor(Math.min(STUDY.maxBlock, e - cur) / 15) * 15;
@@ -246,7 +252,7 @@
       });
       dates.forEach((iso) => {
         const dayFree = blocks[iso].reduce((s, [a, b]) => s + (b - a), 0);
-        let quota = freeTotal ? Math.min(dayFree, Math.round((goal * dayFree / freeTotal) / 15) * 15) : 0;
+        let quota = freeTotal ? Math.min(dayFree, dayCap, Math.round((goal * dayFree / freeTotal) / 15) * 15) : 0;
         const out = [];
         let focus = null;
         if (P.study.style === "focus") {
@@ -303,13 +309,17 @@
       const plan = {};
       if (!P.courses.length || !dates.length) return (planCache[monday] = plan);
       const past = dates.filter((d) => d < today), live = dates.filter((d) => d >= today);
-      past.forEach((d) => { plan[d] = lockedBlocks(d) || plainWeek(monday)[d] || []; });
+      // Days before the student started weren't planned with them, so show no study.
+      past.forEach((d) => { plan[d] = d < since ? [] : lockedBlocks(d) || plainWeek(monday)[d] || []; });
       if (live.length) {
         const used = zeroUsed();
         let studied = 0;
         past.forEach((d) => P.courses.forEach((c) => { const m = actualMinutes(c.id, d); used[c.id] += m; studied += m; }));
-        // If the week has already started, the remaining goal is what's left of the full week's goal.
-        const goal = past.length ? Math.max(0, weekGoal(dates.length) - studied) : weekGoal(dates.length);
+        // If the week has already started, the remaining goal is what's left of the
+        // week's goal. Days before the student started using the app don't count,
+        // so someone starting on a Sunday gets one day's worth, not a whole week's.
+        const counted = dates.filter((d) => d >= since).length;
+        const goal = Math.max(0, weekGoal(counted) - studied);
         Object.assign(plan, schedule(live, goal, used));
       }
       return (planCache[monday] = plan);
@@ -319,6 +329,8 @@
       const timed = sessions.some((x) => x.blockId === b.id);
       if (studyDone[b.id] || timed) return "done";
       if (iso < since) return "past";
+      // On the first day, blocks that ended before the student finished setup weren't missed.
+      if (iso === since && progress.sinceMin != null && toMin(b.end) <= progress.sinceMin) return "past";
       return iso < today ? "missed" : "planned";
     }
 
