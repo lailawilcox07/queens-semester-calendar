@@ -48,7 +48,7 @@
           <li>${ICON.more}<span>Tap <b>⋯</b> next to the address bar, then <b>Share</b>. <span class="muted">On older iPhones, tap the Share button ${ICON.share} at the bottom of the screen.</span></span></li>
           <li>${ICON.add}<span>Scroll down and tap <b>Add to Home Screen</b>. You may need to tap <b>View More</b> first.</span></li>
           <li><span>Leave <b>Open as Web App</b> turned on, then tap <b>Add</b>.</span></li>
-          <li><span>Open it from your home screen. iPhone keeps it separate from Safari, so <b>sign in again</b> there. The quickest way is a code from your laptop: open <b>Add to your phone</b> on your laptop while signed in.</span></li>
+          <li><span>Open it from your home screen. iPhone keeps it separate from Safari, so <b>sign in again</b> there. The quickest way: on your laptop (signed in), click your account at the top right, then <b>Get a code</b>.</span></li>
         </ol>`;
     }
     if (p === "android") {
@@ -83,7 +83,7 @@
   // also show a code the student can type into the app once it's added.
   function codeHTML() {
     if (!linkFor || !linkFor.code || Date.now() - linkFor.at > 5 * 60e3) return "";
-    return `<p class="small phone-code-line">Already added it to your home screen? Open it, tap <b>Sign in to sync</b> → <b>Have a code from your laptop?</b> and enter:</p>
+    return `<p class="small phone-code-line">Already added it to your home screen? Open it, tap <b>Sign in to sync</b> → <b>Have a code from another device?</b> and enter:</p>
       <p class="phone-code"><span class="muted small">${esc(linkFor.email)}</span><b>${esc(linkFor.code)}</b></p>
       <p class="small muted">The QR code and this code work once between them. <button type="button" class="link-btn" data-i="newcode">Get a new one</button></p>`;
   }

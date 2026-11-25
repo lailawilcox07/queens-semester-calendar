@@ -17,7 +17,7 @@
   let lastSync = 0;
   let pushTimer = null;
   let hooks = null; // { getProfile, replace(profile), clearLocal(), rerender() }
-  const panel = { open: false, step: "email", email: "", error: "", busy: false, remote: null, confirmOut: false, laptop: false };
+  const panel = { open: false, step: "email", email: "", error: "", busy: false, remote: null, confirmOut: false, laptop: false, device: null };
 
   function loadLib() {
     if (root.supabase && root.supabase.createClient) return Promise.resolve();
@@ -194,14 +194,15 @@
         <h3>Your account</h3>
         <p><b>${esc(user.email)}</b></p>
         <p class="muted small">${status === "synced" ? `Synced ${esc(ago(lastSync))}.` : status === "offline" ? "You're offline. Changes will sync when you're back online." : status === "error" ? "Couldn't sync just now. We'll keep trying." : "Saving…"} Open the app on any device and sign in with this email to see your semester there.</p>
+        ${deviceCodeHTML()}
         ${panel.confirmOut
           ? `<p class="small">Signing out removes your semester from this device. It stays saved in your account.</p>
              <div class="add-row"><button type="button" class="btn danger small" data-s="signout-yes">Sign out</button><button type="button" class="btn small ghost" data-s="signout-no">Cancel</button></div>`
           : `<div class="add-row"><button type="button" class="btn small" data-s="sync-now">Sync now</button><button type="button" class="btn small ghost" data-s="signout">Sign out</button><button type="button" class="btn small ghost" data-s="close">Close</button></div>`}`;
     } else if (panel.step === "code" && panel.laptop) {
       body = `
-        <h3>Sign in with a code from your laptop</h3>
-        <p class="muted small">On your laptop, signed in, click <b>Add to your phone</b>. Enter the email and 6-digit code shown there.</p>
+        <h3>Sign in with a code from another device</h3>
+        <p class="muted small">On a device where you're signed in (like your laptop), open your account at the top right and click <b>Get a code</b>. Enter the email and 6-digit code shown there.</p>
         <form data-s-form="code" class="acct-form acct-form-stack" autocomplete="off">
           <input id="acctEmail" type="email" autocomplete="email" placeholder="you@${esc(domain())}" value="${esc(panel.email)}" aria-label="Queen's email" required>
           <input id="acctCode" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" aria-label="6-digit code" required>
@@ -225,7 +226,7 @@
           <input id="acctEmail" type="email" autocomplete="email" placeholder="you@${esc(domain())}" value="${esc(panel.email)}" aria-label="Queen's email" required>
           <button type="submit" class="btn primary small" ${panel.busy ? "disabled" : ""}>${panel.busy ? "Sending…" : "Send code"}</button>
         </form>${err}
-        <div class="add-row"><button type="button" class="link-btn" data-s="laptop">Have a code from your laptop?</button><button type="button" class="link-btn muted" data-s="close">Not now</button></div>`;
+        <div class="add-row"><button type="button" class="link-btn" data-s="laptop">Have a code from another device?</button><button type="button" class="link-btn muted" data-s="close">Not now</button></div>`;
     }
     return `<div class="card acct-panel" role="region" aria-label="Account">${body}</div>`;
   }
@@ -279,7 +280,14 @@
     if (!el) return false;
     switch (el.dataset.s) {
       case "open": panel.open = !panel.open; panel.error = ""; panel.confirmOut = false; break;
-      case "close": panel.open = false; break;
+      case "close": panel.open = false; panel.device = null; break;
+      case "device-code": {
+        panel.device = { busy: true };
+        hooks.rerender();
+        const link = await phoneLink();
+        panel.device = link && link.code ? { code: link.code, email: link.email, at: Date.now() } : { error: true };
+        break;
+      }
       case "back": panel.step = "email"; panel.laptop = false; panel.error = ""; break;
       case "laptop": panel.step = "code"; panel.laptop = true; panel.error = ""; break;
       case "resend": await sendCode(panel.email); break;
@@ -315,6 +323,20 @@
   }
 
   // A one-time sign-in for the phone: a QR link plus a 6-digit code (see phone-link function).
+  // A one-time code for signing in another device (e.g. the home-screen app on
+  // an iPhone, which doesn't share sign-ins with Safari). No email is sent.
+  function deviceCodeHTML() {
+    const d = panel.device;
+    if (d && d.code && Date.now() - d.at < 50 * 60e3) {
+      return `<div class="device-code"><p class="small">On the other device, tap <b>Sign in to sync</b> → <b>Have a code from another device?</b> and enter:</p>
+        <p class="phone-code"><span class="muted small">${esc(d.email)}</span><b>${esc(d.code)}</b></p>
+        <p class="muted small">Works once, for about an hour.</p></div>`;
+    }
+    if (d && d.busy) return `<p class="muted small">Getting a code…</p>`;
+    return `<p class="small">Signing in on your phone's home-screen app? <button type="button" class="link-btn" data-s="device-code">Get a code</button></p>
+      ${d && d.error ? `<p class="field-error">Couldn't get a code just now. Please try again in a minute.</p>` : ""}`;
+  }
+
   async function phoneLink() {
     const token = await accessToken();
     if (!token) return null;
