@@ -159,5 +159,5 @@
     root.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(() => {}); });
   }
 
-  root.Install = { cardHTML, linkHTML, handle, installed, platform, afterRender, onChange: null };
+  root.Install = { qrSvg, cardHTML, linkHTML, handle, installed, platform, afterRender, onChange: null };
 })(window);

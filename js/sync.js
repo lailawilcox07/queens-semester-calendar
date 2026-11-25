@@ -279,15 +279,13 @@
     const el = e.target.closest("[data-s]");
     if (!el) return false;
     switch (el.dataset.s) {
-      case "open": panel.open = !panel.open; panel.error = ""; panel.confirmOut = false; break;
-      case "close": panel.open = false; panel.device = null; break;
-      case "device-code": {
-        panel.device = { busy: true };
-        hooks.rerender();
-        const link = await phoneLink();
-        panel.device = link && link.code ? { code: link.code, email: link.email, at: Date.now() } : { error: true };
+      case "open":
+        panel.open = !panel.open; panel.error = ""; panel.confirmOut = false;
+        // Show a code and QR code for signing in another device straight away.
+        if (panel.open && user && !deviceFresh()) loadDeviceCode();
         break;
-      }
+      case "close": panel.open = false; break;
+      case "device-code": panel.device = null; loadDeviceCode(); break;
       case "back": panel.step = "email"; panel.laptop = false; panel.error = ""; break;
       case "laptop": panel.step = "code"; panel.laptop = true; panel.error = ""; break;
       case "resend": await sendCode(panel.email); break;
@@ -325,16 +323,35 @@
   // A one-time sign-in for the phone: a QR link plus a 6-digit code (see phone-link function).
   // A one-time code for signing in another device (e.g. the home-screen app on
   // an iPhone, which doesn't share sign-ins with Safari). No email is sent.
+  const deviceFresh = () => panel.device && panel.device.code && Date.now() - panel.device.at < 50 * 60e3;
+
   function deviceCodeHTML() {
     const d = panel.device;
-    if (d && d.code && Date.now() - d.at < 50 * 60e3) {
-      return `<div class="device-code"><p class="small">On the other device, tap <b>Sign in to sync</b> → <b>Have a code from another device?</b> and enter:</p>
-        <p class="phone-code"><span class="muted small">${esc(d.email)}</span><b>${esc(d.code)}</b></p>
-        <p class="muted small">Works once, for about an hour.</p></div>`;
+    if (deviceFresh()) {
+      const url = location.origin + location.pathname + "?signin=" + encodeURIComponent(d.hash);
+      const qr = root.Install && Install.qrSvg ? Install.qrSvg(url) : "";
+      return `<div class="device-code">
+        <h4>Sign in on another device</h4>
+        <div class="device-code-row">
+          ${qr ? `<div class="qr-box">${qr}</div>` : ""}
+          <div>
+            <p class="small">Scan with your phone's camera, or in the home-screen app tap <b>Sign in to sync</b> → <b>Have a code from another device?</b> and enter:</p>
+            <p class="phone-code"><span class="muted small">${esc(d.email)}</span><b>${esc(d.code)}</b></p>
+          </div>
+        </div>
+        <p class="muted small">Works once, for about an hour. <button type="button" class="link-btn" data-s="device-code">New code</button></p>
+      </div>`;
     }
-    if (d && d.busy) return `<p class="muted small">Getting a code…</p>`;
-    return `<p class="small">Signing in on your phone's home-screen app? <button type="button" class="link-btn" data-s="device-code">Get a code</button></p>
-      ${d && d.error ? `<p class="field-error">Couldn't get a code just now. Please try again in a minute.</p>` : ""}`;
+    if (d && d.error) return `<p class="field-error">Couldn't get a sign-in code for another device just now. <button type="button" class="link-btn" data-s="device-code">Try again</button></p>`;
+    return `<p class="muted small">Getting a sign-in code for another device…</p>`;
+  }
+
+  async function loadDeviceCode() {
+    if (!user || (panel.device && panel.device.busy)) return;
+    panel.device = { busy: true };
+    const link = await phoneLink();
+    panel.device = link && link.code ? { code: link.code, hash: link.hash, email: link.email, at: Date.now() } : { error: true };
+    if (panel.open) hooks.rerender();
   }
 
   async function phoneLink() {
